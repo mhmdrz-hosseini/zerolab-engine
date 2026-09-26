@@ -12,7 +12,8 @@ import { buildSignedDistanceGrid } from '../engine/offset';
 import { analyzePieces } from '../engine/printability';
 import { parseObj } from '../engine/obj';
 import { generateMoldPackage, pickFrame, V02 } from '../engine/split';
-import { parseStlBinary } from '../engine/stl';
+import { buildFitCoupon } from '../engine/coupon';
+import { parseStlBinary, writeStlBinary } from '../engine/stl';
 import { weldMesh } from '../engine/weld';
 import { AXES, type AnalysisReport, type GenerateParams, type GenerateResult, type MeshArrays, type WorkerRequest, WorkerResponse } from '../engine/types';
 
@@ -311,8 +312,21 @@ async function generate(params: GenerateParams): Promise<void> {
   post({ type: 'result', result });
 }
 
-async function exportPackage(): Promise<void> {
+// Fit coupon — a SEPARATE download, never inside the mold zip. Uses the last
+// generation's joint clearance so the samples match the user's actual mold.
+async function buildCoupon(): Promise<void> {
   if (!state || !state.lastResult) throw new Error('Generate a mold first');
+  const m = await ensureMod();
+  const junk: { delete(): void }[] = [];
+  const track = <T extends { delete(): void }>(x: T): T => { junk.push(x); return x; };
+  const { mesh, notes } = buildFitCoupon({ mod: m, track, clearance: state.lastResult.params.clearance });
+  const stl = new Uint8Array(writeStlBinary(mesh));
+  junk.forEach(x => { try { x.delete(); } catch { /* freed */ } });
+  const blob = stl.buffer.slice(stl.byteOffset, stl.byteOffset + stl.byteLength) as ArrayBuffer;
+  post({ type: 'coupon', blob, fileName: 'fit_coupon.stl', notes }, [blob]);
+}
+
+async function exportPackage(): Promise<void> {  if (!state || !state.lastResult) throw new Error('Generate a mold first');
   const r = state.lastResult;
   if (!r.gatesPass) throw new Error('Validation gates failed — fix the failed checks before exporting');
 
@@ -361,6 +375,7 @@ ctx.onmessage = (e: MessageEvent<WorkerRequest>) => {
       if (req.type === 'ingest') await ingest(req.fileName, req.bytes);
       else if (req.type === 'generate') await generate(req.params);
       else if (req.type === 'export') await exportPackage();
+      else if (req.type === 'coupon') await buildCoupon();
     } catch (err) {
       post({ type: 'error', message: err instanceof Error ? err.message : String(err) });
     }

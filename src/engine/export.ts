@@ -5,6 +5,7 @@
 import { zipSync, type Zippable } from 'fflate';
 import { writeStlBinary } from './stl';
 import { cleanExportMesh, type MeshAudit } from './clean';
+import { CLAMP } from './clamps';
 import type { FasteningInfo, GenerateParams, MeshArrays } from './types';
 import type { PrintabilityReport } from './printability';
 
@@ -138,6 +139,12 @@ export function buildPrintFiles(deps: {
       warning: info.fastening.warning ?? null,
     } : null,
     baseLock: info.baseLockA && info.baseLockB ? { enabled: true, parts: 2, clips: info.baseLockClips ?? 2 } : null,
+    calibration: {
+      jointClearanceMm: info.params.clearance,
+      clipFitOffsetMm: CLAMP.clipInterferenceMm,
+      elephantFootMm: 0.2,
+      status: 'factory-defaults — recalibrate via the fit coupon',
+    },
     validation: info.checks,
     meshAudit,
     warnings: info.warnings,

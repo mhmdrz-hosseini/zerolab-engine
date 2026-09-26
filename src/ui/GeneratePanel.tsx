@@ -45,6 +45,10 @@ export function GeneratePanel() {
   const exportPkg = useStore((s) => s.exportPkg);
   const exportUrl = useStore((s) => s.exportUrl);
   const exportName = useStore((s) => s.exportName);
+  const couponUrl = useStore((s) => s.couponUrl);
+  const couponName = useStore((s) => s.couponName);
+  const couponNotes = useStore((s) => s.couponNotes);
+  const requestCoupon = useStore((s) => s.requestCoupon);
   const toggleLayer = useStore((s) => s.toggleLayer);
   const phase = useStore((s) => s.phase);
   const [preset, setPreset] = useState<PresetId>('standard');
@@ -217,6 +221,16 @@ export function GeneratePanel() {
             )
           ) : (
             <button className="btn primary wide" disabled>Export blocked — hard gate failed</button>
+          )}
+          {couponUrl ? (
+            <a className="btn wide" href={couponUrl} download={couponName ?? 'fit_coupon.stl'}>Download {couponName ?? 'fit coupon'} (STL)</a>
+          ) : (
+            <button className="btn wide" onClick={requestCoupon} disabled={busy} title="small standalone calibration print: joint clearances, clip fits A–D, BaseLock segment — separate from the mold zip">
+              Build fit coupon (calibration print)
+            </button>
+          )}
+          {couponNotes.length > 0 && (
+            <div className="hint dim">{couponNotes.join(' · ')}</div>
           )}
           <div className="hint dim">
             Hardware: {result.fastening

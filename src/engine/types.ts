@@ -103,6 +103,7 @@ export type WorkerRequest =
   | { type: 'ingest'; fileName: string; bytes: ArrayBuffer }
   | { type: 'generate'; params: GenerateParams }
   | { type: 'export' }
+  | { type: 'coupon' }
   | { type: 'cancel' };
 
 export type WorkerResponse =
@@ -111,6 +112,7 @@ export type WorkerResponse =
   | { type: 'result'; result: GenerateResult }
   | { type: 'failure'; axis: Axis; trappedPct: number; message: string; nextAxis?: Axis; trapFlags?: Uint8Array }
   | { type: 'export'; blob: ArrayBuffer; fileName: string }
+  | { type: 'coupon'; blob: ArrayBuffer; fileName: string; notes: string[] }
   | { type: 'error'; message: string };
 
 export function trisOf(m: MeshArrays): number {

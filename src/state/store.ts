@@ -34,10 +34,14 @@ interface StoreState {
   layers: Layers;
   exportUrl: string | null;
   exportName: string | null;
+  couponUrl: string | null;
+  couponName: string | null;
+  couponNotes: string[];
   ingest: (file: File) => void;
   ingestBytes: (bytes: ArrayBuffer, name: string) => void;
   generate: (params: GenerateParams) => void;
   exportPkg: () => void;
+  requestCoupon: () => void;
   toggleLayer: (k: keyof Layers) => void;
   reset: () => void;
 }
@@ -70,6 +74,9 @@ function getWorker(): Worker {
     } else if (msg.type === 'export') {
       const url = URL.createObjectURL(new Blob([msg.blob], { type: 'application/zip' }));
       useStore.setState({ exportUrl: url, exportName: msg.fileName, progress: null });
+    } else if (msg.type === 'coupon') {
+      const url = URL.createObjectURL(new Blob([msg.blob], { type: 'model/stl' }));
+      useStore.setState({ couponUrl: url, couponName: msg.fileName, couponNotes: msg.notes, progress: null });
     } else if (msg.type === 'error') {
       useStore.setState({ phase: 'error', progress: null, error: msg.message });
     }
@@ -91,6 +98,9 @@ export const useStore = create<StoreState>((set) => ({
   failure: null,
   exportUrl: null,
   exportName: null,
+  couponUrl: null,
+  couponName: null,
+  couponNotes: [],
   layers: { master: true, skin: true, outer: false, jacketA: false, jacketB: false, jacketB1: false, jacketB2: false, plate: false },
   ingest: (file) => {
     void file.arrayBuffer().then((bytes) => {
@@ -109,6 +119,10 @@ export const useStore = create<StoreState>((set) => ({
     set({ phase: 'busy', progress: { stage: 'Building print package', pct: 0.5 }, error: null });
     getWorker().postMessage({ type: 'export' });
   },
+  requestCoupon: () => {
+    set({ phase: 'busy', progress: { stage: 'Building fit coupon', pct: 0.5 }, error: null });
+    getWorker().postMessage({ type: 'coupon' });
+  },
   toggleLayer: (k) => set((s) => ({ layers: { ...s.layers, [k]: !s.layers[k] } })),
-  reset: () => set({ phase: 'idle', progress: null, error: null, failure: null, report: null, preview: null, result: null, exportUrl: null, exportName: null, layers: { master: true, skin: true, outer: false, jacketA: false, jacketB: false, jacketB1: false, jacketB2: false, plate: false } }),
+  reset: () => set({ phase: 'idle', progress: null, error: null, failure: null, report: null, preview: null, result: null, exportUrl: null, exportName: null, couponUrl: null, couponName: null, couponNotes: [], layers: { master: true, skin: true, outer: false, jacketA: false, jacketB: false, jacketB1: false, jacketB2: false, plate: false } }),
 }));

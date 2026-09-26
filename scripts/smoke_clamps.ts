@@ -4,6 +4,7 @@
 // bands (no full mold generation) so it runs in seconds.
 import { loadManifold } from '../src/engine/manifoldLoader';
 import { CLAMP, buildZeroClip, planClampStations, validateZeroClip } from '../src/engine/clamps';
+import { buildFitCoupon } from '../src/engine/coupon';
 import { buildPrintFiles } from '../src/engine/export';
 import { cleanExportMesh } from '../src/engine/clean';
 import { instanceToMeshArrays } from '../src/engine/offset';
@@ -151,6 +152,14 @@ check('print_profile has the ZeroClip entry', (profileJson.profiles?.zero_clip?.
   `material ${profileJson.profiles?.zero_clip?.material}, support ${profileJson.profiles?.zero_clip?.support}`);
 const assembly = new TextDecoder().decode(files['pourbox_clamp_smoke/assembly.md']);
 check('assembly.md names the clip plan', assembly.includes(`${planA.stations.length} ZeroClips`), 'hardware section updated');
+
+// --- 8. fit coupon: builds clean through the export gate ---
+const coupon = buildFitCoupon({ mod, track: (x) => x, clearance: 0.35 });
+const couponAudit = cleanExportMesh(coupon.mesh).audit;
+check('coupon mesh clean (watertight, 1 component)', couponAudit.watertight && couponAudit.components === 1 && couponAudit.degenerateTris === 0,
+  `tris ${couponAudit.tris}, vol ${couponAudit.volumeCm3} cm³, comps ${couponAudit.components}`);
+check('coupon carries the full sample set', coupon.notes.length === 8 && coupon.notes.some(n => n.includes('BaseLock')),
+  `${coupon.notes.length} samples: ${coupon.notes.filter(n => /clip sample/.test(n)).length} clips, ${coupon.notes.filter(n => /joint/.test(n)).length} joints, BaseLock ${coupon.notes.some(n => /BaseLock/.test(n)) ? '✓' : '✗'}`);
 
 console.log(failures === 0 ? '\nSMOKE:CLAMPS PASS' : `\nSMOKE:CLAMPS FAIL (${failures})`);
 process.exit(failures === 0 ? 0 : 1);

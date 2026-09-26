@@ -98,6 +98,11 @@ Split axis: **±${info.axis}** · Silicone needed: **≈ ${info.siliconeMl.toFix
 ## Hardware
 - 6–10 binder clips sized to the 5 mm seam rail stack; removable seam/base sealant
 
+## Material & print profiles
+- Per-part slicer settings ship in \`print_profile.json\` — the **master** wants quality (0.12–0.16 mm layers; the silicone reproduces its surface), the **jackets** want speed/structure (0.6 mm nozzle OK).
+- **Pouring RTV silicone only → PLA is fine** (room-temperature pour; the liquid pressure on these walls is ~0.25 psi).
+- **Pouring hot candle wax while the jacket stays on → use PETG/ASA/ABS.** Wax pours at 57–79 °C, above PLA's ~55 °C heat-deflection point. Print the jackets in the higher-temperature material in that workflow; the master can stay PLA.
+
 ## Steps
 1. Print \`master_base\` (doll + fused base plate, plate-down), \`jacket_A\` and \`jacket_B\` (rim-down).
 2. Bring **jacket B** in from its side; seat its rim on the base plate.
@@ -113,10 +118,66 @@ ${partMeta.map((p) => `- **${p.name}** — \`${p.file}\` (${p.triangles.toLocale
 ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).join('\n')}` : ''}
 `;
 
+  const printProfile = {
+    format: 'matrix-mold-print-profiles/0.3',
+    note: 'Per-part slicer settings. The master and the jackets have different quality requirements: the silicone reproduces the master\'s surface finish, the jacket only provides stiffness.',
+    material: {
+      silicone_making_only: 'PLA is fine — room-temperature RTV pour, ~0.25 psi hydrostatic pressure at these heights.',
+      hot_wax_with_jacket_on: 'PETG / ASA / ABS for the jackets — common wax pour temperatures (57–79 °C) exceed PLA\'s ~55 °C heat-deflection temperature.',
+      resin_master_option: 'For the best surface fidelity, print the master in resin and the jackets on FDM.',
+    },
+    profiles: {
+      master_base: {
+        orientation: 'plate-down, as exported — never flip it',
+        nozzle_mm: 0.4,
+        layer_height_mm: [0.12, 0.16],
+        perimeters: 3,
+        infill_percent: [10, 15],
+        infill_pattern: 'gyroid',
+        top_bottom_solid_layers: 5,
+        support: 'organic/tree where needed, support interface enabled',
+        seam: 'rear / least-visible surface — RTV silicone reproduces layer lines and seam scars',
+        elephant_foot_compensation_mm: 0.2,
+        post_process: 'sand/fill if a smooth cast surface is wanted → seal (e.g. Smooth-On print coating) → release agent → pour silicone',
+      },
+      jacket_A: {
+        orientation: 'rim-down, as exported — never seam-down',
+        nozzle_mm: 0.4,
+        layer_height_mm: [0.2, 0.24],
+        fast_alt: { nozzle_mm: 0.6, layer_height_mm: [0.28, 0.32] },
+        perimeters: '3 (4 for heavy reuse)',
+        infill_percent: [10, 15],
+        infill_pattern: 'gyroid',
+        support: '~55° threshold, painted where necessary',
+        brim: 'optional',
+        seam: 'rear / away from the mating rail',
+        elephant_foot_compensation_mm: 0.2,
+      },
+      jacket_B: {
+        orientation: 'rim-down, as exported — never seam-down',
+        nozzle_mm: 0.4,
+        layer_height_mm: [0.2, 0.24],
+        fast_alt: { nozzle_mm: 0.6, layer_height_mm: [0.28, 0.32] },
+        perimeters: '3 (4 for heavy reuse)',
+        infill_percent: [10, 15],
+        infill_pattern: 'gyroid',
+        support: '~55° threshold, painted where necessary — B typically needs more support than A',
+        brim: '5 mm recommended',
+        seam: 'rear / away from the mating rail',
+        elephant_foot_compensation_mm: 0.2,
+      },
+      silicone_skin: {
+        print: false,
+        note: 'DO NOT PRINT — this STL is the visualization of the silicone the cavity will become.',
+      },
+    },
+  };
+
   const files: Record<string, Uint8Array> = {};
   for (const p of partDefs) files[`${root}/${p.file}`] = stl(p.mesh); // post-cleanup meshes
   files[`${root}/project.json`] = new TextEncoder().encode(JSON.stringify(project, null, 2));
   files[`${root}/assembly.md`] = new TextEncoder().encode(assembly);
+  files[`${root}/print_profile.json`] = new TextEncoder().encode(JSON.stringify(printProfile, null, 2));
   const zip = zipSync(files as Zippable, { level: 1 });
   return { files, zip, fileName: `${root}.zip` };
 }

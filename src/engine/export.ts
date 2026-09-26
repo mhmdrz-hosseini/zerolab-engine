@@ -21,6 +21,10 @@ export interface PackageInfo {
   crown: { u: number; v: number } | null;
   ventCount: number;
   clearanceBand?: { requestedGap: number; min: number; p10: number; p50: number; p90: number; withinBand: boolean };
+  printability?: Record<string, {
+    bedAreaMm2: number; overhangAreaMm2: number; layerStep: number; layers: number;
+    worstBands: { zLo: number; zHi: number; areaMm2: number }[];
+  }>;
 }
 
 export interface PrintFiles {
@@ -104,6 +108,7 @@ export function buildPrintFiles(deps: {
     basePlateMm: info.plateDim.map((d) => Number(d.toFixed(1))),
     ports: { crown: null as null, ventCount: info.ventCount },
     clearanceBand: info.clearanceBand,
+    printability: info.printability,
     castingMaterial: info.params.material ?? null,
     hardware: ['6–10 binder clips (25–32 mm), gripping the flat external seam rails'],
     validation: info.checks,
@@ -139,6 +144,7 @@ ${materialNote}
 ## Parts
 ${partMeta.map((p) => `- **${p.name}** — \`${p.file}\` (${p.triangles.toLocaleString()} tris${p.volumeCm3 ? `, ${p.volumeCm3} cm³` : ''}) — ${p.note}`).join('\n')}
 
+${info.printability ? `## Support forecast (coarse 45° layer analysis)\n${Object.entries(info.printability).map(([name, r]) => `- **${name}**: bed contact ≈ ${r.bedAreaMm2} mm² · unsupported growth ≈ ${r.overhangAreaMm2} mm²${r.worstBands.length ? ` — paint supports around the ${r.worstBands.slice(0, 2).map((b) => `${b.areaMm2} mm² band at z ${b.zLo}–${b.zHi}`).join(' and ')}` : ''}`).join('\n')}\n` : ''}
 ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).join('\n')}` : ''}
 `;
 

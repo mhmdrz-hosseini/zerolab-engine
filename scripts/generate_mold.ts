@@ -22,6 +22,8 @@ import { parseGlb } from '../src/engine/glb';
 import { parseObj } from '../src/engine/obj';
 import { parseStlBinary } from '../src/engine/stl';
 import { buildPrintFiles } from '../src/engine/export';
+import { analyzePieces } from '../src/engine/printability';
+import { V02 } from '../src/engine/split';
 import { generateMoldPackage, pickFrame } from '../src/engine/split';
 import type { Axis, MeshArrays } from '../src/engine/types';
 
@@ -190,6 +192,21 @@ if (!isStatusOk(fused)) {
 const masterBase = instanceToMeshArrays(fused);
 fused.delete(); pm.delete(); mm.delete();
 
+// --- printability analyzer (audit §7): per-part 45° overhang forecast ---
+console.log(`${el()} printability forecast…`);
+const is3pc = !!(pkg.pieces.jacketB1 && pkg.pieces.jacketB2);
+const printability = analyzePieces({
+  mod, masterBase,
+  jackets: is3pc
+    ? [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B1', mesh: pkg.pieces.jacketB1! }, { name: 'jacket_B2', mesh: pkg.pieces.jacketB2! }]
+    : [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B', mesh: pkg.pieces.jacketB! }],
+  vert: pkg.frame.vert, base: pkg.frame.base, crown: pkg.frame.crown, plateT: V02.plateT,
+});
+for (const [name, r] of Object.entries(printability)) {
+  console.log(`  ${name}: bed ${r.bedAreaMm2} mm² · unsupported @45° ${r.overhangAreaMm2} mm²` +
+    (r.worstBands.length ? ` · worst ${r.worstBands[0].areaMm2} mm² @ ${r.worstBands[0].zLo}–${r.worstBands[0].zHi} mm` : ''));
+}
+
 // --- package ---
 const bbOf = (m: MeshArrays) => {
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
@@ -224,6 +241,7 @@ try {
       crown: null,
       ventCount: pkg.ports.vents.length,
       clearanceBand: gates.clearanceBand,
+      printability,
     },
   }));
 } catch (err) {

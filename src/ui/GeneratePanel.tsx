@@ -140,6 +140,16 @@ export function GeneratePanel() {
             );
           })()}
           {(() => {
+            const pr = result.printability;
+            if (!pr) return null;
+            const jackets = Object.entries(pr).filter(([k]) => k.startsWith('jacket'));
+            return (
+              <div className="hint dim">
+                Support forecast: {jackets.map(([k, r]) => `${k === 'jacket_B' ? 'B' : k.replace('jacket_', '')} ${r.overhangAreaMm2}mm²`).join(' · ')} unsupported @45° — details in assembly.md
+              </div>
+            );
+          })()}
+          {(() => {
             const trapped = report?.axes.find((a) => a.axis === result.axis)?.trappedPct ?? 0;
             const v = trapped <= 5 ? { label: 'HIGH', cls: 'pass' } : trapped <= 12 ? { label: 'MEDIUM', cls: 'soft' } : { label: 'LOW', cls: 'fail' };
             return (

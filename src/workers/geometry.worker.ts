@@ -9,8 +9,9 @@ import { parseGlb } from '../engine/glb';
 import { isStatusOk, loadManifold, type ManifoldMod } from '../engine/manifoldLoader';
 import { extractIso, instanceToMeshArrays } from '../engine/offset';
 import { buildSignedDistanceGrid } from '../engine/offset';
+import { analyzePieces } from '../engine/printability';
 import { parseObj } from '../engine/obj';
-import { generateMoldPackage, pickFrame } from '../engine/split';
+import { generateMoldPackage, pickFrame, V02 } from '../engine/split';
 import { parseStlBinary } from '../engine/stl';
 import { weldMesh } from '../engine/weld';
 import { AXES, type AnalysisReport, type GenerateParams, type GenerateResult, type MeshArrays, type WorkerRequest, WorkerResponse } from '../engine/types';
@@ -277,6 +278,14 @@ async function generate(params: GenerateParams): Promise<void> {
     gatesPass: gateReport.pass,
     ports: { crown: null, vents: pkg.ports.vents.length },
     clearanceBand: gateReport.clearanceBand,
+    printability: analyzePieces({
+      mod: m, masterBase: masterBaseArr,
+      jackets: is3
+        ? [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B1', mesh: pkg.pieces.jacketB1! }, { name: 'jacket_B2', mesh: pkg.pieces.jacketB2! }]
+        : [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B', mesh: pkg.pieces.jacketB }],
+      vert: pkg.frame.vert, base: pkg.frame.base, crown: pkg.frame.crown,
+      plateT: V02.plateT,
+    }),
   };
   state.lastResult = result;
   // no transfer list — the worker keeps its own copies for the export stage

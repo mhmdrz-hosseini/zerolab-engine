@@ -68,6 +68,13 @@ export interface GenerateResult {
   gatesPass: boolean;                    // all hard gates green — export allowed
   ports: { crown: { u: number; v: number } | null; vents: number };
   clearanceBand?: { requestedGap: number; min: number; p10: number; p50: number; p90: number; withinBand: boolean };
+  printability?: Record<string, {
+    bedAreaMm2: number;
+    overhangAreaMm2: number;
+    layerStep: number;
+    layers: number;
+    worstBands: { zLo: number; zHi: number; areaMm2: number }[];
+  }>;
 }
 
 // ---- worker protocol ----

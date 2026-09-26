@@ -53,6 +53,10 @@ export function buildEnvelope(
   frame: MoldFrame,
   gap: number,
   wall: number,
+  window: number = gap,            // pull-clearance window span (mm). gap → the
+                                   // V0.3 behavior; smaller values hug tighter.
+                                   // Must stay ≥ the ~1.5 mm ring step so thin
+                                   // horizontal features between rings stay covered.
 ): Envelope {
   const axes = ['X', 'Y', 'Z'];
   const v = axes.indexOf(frame.vert), u = (v + 1) % 3, w = (v + 2) % 3;
@@ -74,12 +78,15 @@ export function buildEnvelope(
   const step = height / count;
   const slope = 0.55;          // upward shrink ratchet (29° lean)
   // Pull-clearance window: each ring unions the master's silhouettes within
-  // ±gap along the vert (= pull-adjacent) axis, so the cavity extends ⊕gap
+  // ±window along the vert (= pull-adjacent) axis, so the cavity extends ⊕gap
   // beyond every master point along the split normal — the jacket half can
   // slide off rigidly. This windowing is also why the commercial jackets hug
   // wide features but read boxy around fine ones (their measured p50 hug ~20
-  // mm): features narrower than the gap in pull smear into the window.
-  const subs = [-gap, -gap / 2, 0, gap / 2, gap];
+  // mm): features narrower than the window in pull smear into it. The full-gap
+  // window is the safe V0.3 default; smaller windows hug tighter (less
+  // silicone) and are bounded by the extraction press-in sim.
+  const span = Math.min(Math.max(window, step), gap);
+  const subs = [-span, -span / 2, 0, span / 2, span];
 
   // --- cavity rings (CrossSections in the rotated frame, (u,w) coordinates) ---
   const rings: CSLike[] = [];

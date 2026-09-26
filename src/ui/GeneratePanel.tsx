@@ -19,6 +19,15 @@ const FITS = [
 ] as const;
 type FitId = (typeof FITS)[number]['id'];
 
+// Envelope hug mode (P3): the pull-clearance window fattens the cavity so the
+// jacket slides off rigidly; half-gap measured extraction-safe on the corpus
+// with ~5–10% silicone savings and a tighter median hug.
+const ENVELOPES = [
+  { id: 'full', label: 'Full clearance', note: 'V0.3 window — maximum release margin' },
+  { id: 'tight', label: 'Tight hug', note: '½-gap window — less silicone, test-print first' },
+] as const;
+type EnvelopeId = (typeof ENVELOPES)[number]['id'];
+
 export function GeneratePanel() {
   const report = useStore((s) => s.report);
   const result = useStore((s) => s.result);
@@ -31,6 +40,7 @@ export function GeneratePanel() {
   const phase = useStore((s) => s.phase);
   const [preset, setPreset] = useState<PresetId>('standard');
   const [fit, setFit] = useState<FitId>('standard');
+  const [envelope, setEnvelope] = useState<EnvelopeId>('full');
 
   if (!report) return null;
   const p = PRESETS.find((x) => x.id === preset)!;
@@ -39,6 +49,7 @@ export function GeneratePanel() {
     gap: p.gap,
     wall: f.wall,
     clearance: f.clearance,
+    gapWindow: envelope === 'tight' ? Math.max(1.5, p.gap / 2) : undefined,
   };
   const busy = phase === 'busy';
 
@@ -59,6 +70,13 @@ export function GeneratePanel() {
           </button>
         ))}
       </div>
+      <div className="chips">
+        {ENVELOPES.map((x) => (
+          <button key={x.id} className={`chip${envelope === x.id ? ' on' : ''}`} onClick={() => setEnvelope(x.id)} disabled={busy} title={x.note}>
+            {x.label}
+          </button>
+        ))}
+      </div>
       <button className="btn primary wide" onClick={() => generate(params)} disabled={busy}>
         {result ? 'Regenerate' : 'Generate silicone skin'}
       </button>
@@ -72,6 +90,19 @@ export function GeneratePanel() {
             Split ±{result.axis} · extraction A clears {result.extraction.A}mm, B {result.extraction.B}mm
             <br />Generated in {(result.elapsedMs / 1000).toFixed(1)}s · jacket outer {result.outerDim.map((d) => d.toFixed(0)).join(' × ')} mm
           </div>
+          {result.clearanceBand && (() => {
+            const b = result.clearanceBand;
+            const excess = b.p50 > b.requestedGap + 0.25
+              ? Math.round(result.siliconeMl * (1 - b.requestedGap / b.p50))
+              : 0;
+            return (
+              <div className="hint dim">
+                Silicone efficiency: requested {b.requestedGap.toFixed(0)} mm · median hug {b.p50.toFixed(1)} mm
+                (min {b.min} · p90 {b.p90})
+                {excess > 0 ? ` · excess ≈ ${excess} mL${envelope === 'full' ? ' — Tight hug recovers part of it' : ''}` : ' · on target'}
+              </div>
+            );
+          })()}
           <div className="chips tight">
             <button className={`chip${layers.master ? ' on' : ''}`} onClick={() => toggleLayer('master')}>Master</button>
             <button className={`chip${layers.skin ? ' on' : ''}`} onClick={() => toggleLayer('skin')}>Silicone</button>

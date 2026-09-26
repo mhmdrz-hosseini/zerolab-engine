@@ -232,7 +232,7 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
       m.delete();
       return r;
     };
-    const envelope = buildEnvelope(mod, master, masterRot, invRotate, frame, gap, wall);
+    const envelope = buildEnvelope(mod, master, masterRot, invRotate, frame, gap, wall, params.gapWindow ?? gap);
     const cavitySolid = track(envelope.cavity), outerSolid = track(envelope.outer);
     if (!isOk(cavitySolid) || !isOk(outerSolid)) throw new Error('Kernel rejected the envelope loft');
     const footprintCS = track(csCtor.ofPolygons(envelope.footprint as number[][][], 'EvenOdd'));

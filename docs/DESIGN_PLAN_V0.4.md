@@ -32,13 +32,19 @@ Audit §12/§13: 0.25 mm clearance is too optimistic for a 160 mm tongue/groove 
 
 ### P3 — Silicone gap accuracy (the top cost lever; the one deliberate engine evolution)
 
-Audit §4/§5/§10: requested 8 mm behaves as min 7.40 / P10 8.06 / **P50 10.03**. Half the surface carries ~25% excess clearance — silicone is the expensive material. Root cause hypothesis: the V0.3 ±gap pull-clearance window (anti-jam, invariant 6) unions extra silhouette width into the envelope.
+Audit §4/§5/§10: requested 8 mm behaves as min 7.40 / P10 8.06 / **P50 10.03**. Half the surface carries ~25% excess clearance — silicone is the expensive material.
 
-- **Measure first:** extend the existing clearance audit in `analyze.ts`/`gates.ts` to emit the full percentile band into `project.json` (min/P10/P50/P90 vs target).
-- **Tune `envelope.ts`:** make the pull window parameterized (window factor < 1, or directional-only union) and re-validate slide behavior via the press-in ladder — jam regression is the risk, so tightness is bounded by extraction PASS.
-- **Target bands (from audit §5), advisory → hard after coupon trial:** min ≥ 7.5 · P10 ≥ 7.7 · P50 ≤ 8.5 · P90 < 9.0 for an 8 mm request (scaled linearly for other presets).
-- **UI:** "Silicone efficiency" line — requested vs median actual vs excess mL — `src/ui/AnalysisPanel.tsx`.
-- Acceptance: Sheep + Spiderman CLI PASS, extraction PASS, comparator aperture stays ~97% of REF, P50 within band.
+**Shipped (2026-09-26):** measured, parameterized, and exposed — default unchanged pending the coupon trial (invariant 12).
+
+- **Measured:** the clearance audit now emits a structured band (min/P10/P50/P90 + audit-target flag) into `project.json` (`clearanceBand`). Our gap-8 baseline reproduces the external audit's numbers exactly (7.40/8.06/10.03) — measurement chain validated.
+- **Root cause decomposed** (Spiderman, gap 6 → 8 sweeps of `--gap-window`):
+  - The ±gap pull-clearance window (invariant 6) accounts for ~0.9–1.3 mm of the P50 excess. Extraction passes at every window down to 1.5 mm on the corpus; the binding constraint is the min-clearance dip, not jamming.
+  - The remaining excess (P90 ~10–13 mm) is structural to the shape-following design: the 29° ratchet keeps upper rings fat over steeply narrowing features, and farthest-hit radial resampling bridges fine concave detail. The commercial reference shows the same behavior (their p50 hug reads boxy; p10 dips to 4.0 at gap 6–8 — deeper than our tight-hug p10 of 6.06).
+- **Knobs shipped:** `--gap-window <mm>` (CLI), `gapWindow` param (engine), and a UI "Full clearance / Tight hug (½ gap)" pair. Tight hug = gap/2: Spiderman 263→236 mL (−10%), sheep 196→176 mL (−10%), median hug 7.78→6.86, extraction PASS, comparator aperture unchanged (2944 vs 2946 mm², ~97% of REF).
+- **Gate policy:** at the default window the min-clearance gate stays hard. When the user explicitly tightens, it flips to advisory with the full band reported — the extraction press-in sim remains the hard gate in every mode. A warning fires when the band misses the audit targets.
+- **UI:** "Silicone efficiency" line — requested vs median hug vs excess mL estimate.
+- **Acceptance status:** Sheep + Spiderman CLI PASS, extraction PASS, comparator aperture holds. The audit's full band (P50 ≤ 8.5 at gap 8) is NOT reachable by window tuning alone — see P3b.
+- **P3b (roadmap):** directional/adaptive window — union pull-direction clearance asymmetrically and keep the hug tight perpendicular to the pull; attack the ratchet's vertical fattening over steeply narrowing features. This is the path to the audit's full target bands.
 
 ### P4 — Wall architecture presets (additive; default unchanged until coupon trial)
 

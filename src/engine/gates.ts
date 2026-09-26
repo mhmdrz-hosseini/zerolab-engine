@@ -12,7 +12,22 @@ import type { MoldFrame } from './split';
 import { pointInLoops, type Loops } from './contours';
 
 export interface GateCheck { name: string; pass: boolean; detail: string; hard: boolean }
-export interface GateReport { pass: boolean; checks: GateCheck[]; warnings: string[] }
+export interface GateReport {
+  pass: boolean;
+  checks: GateCheck[];
+  warnings: string[];
+  clearanceBand?: ClearanceBand;  // structured hug-distance percentiles (P3 metric)
+}
+export interface ClearanceBand {
+  requestedGap: number;
+  min: number;
+  p10: number;
+  p50: number;
+  p90: number;
+  // audit §5 target bands for the requested gap (advisory until the coupon
+  // trial): min ≥ g−0.5 · p10 ≥ g−0.3 · p50 ≤ g+0.5 · p90 < g+1.0
+  withinBand: boolean;
+}
 
 const AXES: Axis[] = ['X', 'Y', 'Z'];
 type Axis = 'X' | 'Y' | 'Z';
@@ -105,7 +120,7 @@ function fillReachability(grid: SdfGrid, frame: MoldFrame, cavityLoops: Loops, s
  * silicone gap (p10 over master-surface samples), plus the observed hug
  * distance (the shadow-prism rule hugs only at the widest slices).
  */
-function clearanceAudit(pieces: MeshArrays[], master: MeshArrays, gap: number): string {
+function clearanceAudit(pieces: MeshArrays[], master: MeshArrays, gap: number): { text: string; ok: boolean; band: ClearanceBand } {
   const mkGeom = (m: MeshArrays) => {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(m.vertProperties, 3));
@@ -134,7 +149,19 @@ function clearanceAudit(pieces: MeshArrays[], master: MeshArrays, gap: number): 
   // top face thins below the nominal gap. The commercial reference shows the
   // same behavior (their measured p10 dips to 4.0 mm at gap 6–8).
   const ok = q(0) >= gap - 1.5;
-  return `sampled minimum=${q(0).toFixed(2)} p10=${q(0.1).toFixed(2)} p50=${q(0.5).toFixed(2)} mm (target ≥ ${gap - 1.5}) ${ok ? '✓' : '⚠'}`;
+  const band: ClearanceBand = {
+    requestedGap: gap,
+    min: Number(q(0).toFixed(2)),
+    p10: Number(q(0.1).toFixed(2)),
+    p50: Number(q(0.5).toFixed(2)),
+    p90: Number(q(0.9).toFixed(2)),
+    withinBand: q(0) >= gap - 0.5 && q(0.1) >= gap - 0.3 && q(0.5) <= gap + 0.5 && q(0.9) < gap + 1.0,
+  };
+  return {
+    text: `sampled minimum=${band.min} p10=${band.p10} p50=${band.p50} p90=${band.p90} mm (target ≥ ${gap - 1.5}) ${ok ? '✓' : '⚠'}`,
+    ok,
+    band,
+  };
 }
 
 export function runGates(opts: {
@@ -149,6 +176,9 @@ export function runGates(opts: {
   siliconeMl: number;
   cavityLoops: Loops;
   cavitySections?: { height: number; loops: Loops }[];
+  gapWindow?: number;          // set < gap when the user explicitly chose a
+                               // tighter envelope — the min-clearance gate then
+                               // reports advisory (the extraction sim stays hard)
 }): GateReport {
   const checks: GateCheck[] = [];
   const warnings: string[] = [];
@@ -224,13 +254,22 @@ export function runGates(opts: {
   });
 
   const audit = clearanceAudit(opts.pieceArrays.slice(0, 2), opts.master, opts.gap);
-  const auditPass = audit.includes('✓');
-  checks.push({ name: 'Master-to-jacket clearance audit', pass: auditPass, hard: true, detail: audit });
-  if (!auditPass) warnings.push('jacket comes closer to the master than the silicone gap — inspect the preview');
+  const tightHug = opts.gapWindow !== undefined && opts.gapWindow < opts.gap;
+  checks.push({
+    name: 'Master-to-jacket clearance audit',
+    pass: audit.ok,
+    hard: !tightHug,
+    detail: audit.text + (tightHug ? ' — tight-hug envelope: advisory (extraction sim remains the hard gate)' : ''),
+  });
+  if (!audit.ok && !tightHug) warnings.push('jacket comes closer to the master than the silicone gap — inspect the preview');
+  if (tightHug && !audit.band.withinBand) {
+    warnings.push(`hug band outside audit targets (min ${audit.band.min} p50 ${audit.band.p50} vs gap ${opts.gap}) — acceptable only after a test print`);
+  }
 
   return {
     pass: checks.filter((c) => c.hard).every((c) => c.pass),
     checks,
     warnings,
+    clearanceBand: audit.band,
   };
 }

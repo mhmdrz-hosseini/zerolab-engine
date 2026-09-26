@@ -232,6 +232,7 @@ async function generate(params: GenerateParams): Promise<void> {
     pieceArrays: [pkg.pieces.jacketA, pkg.pieces.jacketB, pkg.pieces.basePlate],
     siliconeMl: pkg.siliconeMl,
     cavityLoops: pkg.cavityLoops, cavitySections: pkg.cavitySections,
+    gapWindow: params.gapWindow,
   });
 
   // Preserve the master. The slicer controls infill; sealed CAD hollows can
@@ -266,6 +267,7 @@ async function generate(params: GenerateParams): Promise<void> {
     checks: gateReport.checks,
     gatesPass: gateReport.pass,
     ports: { crown: null, vents: pkg.ports.vents.length },
+    clearanceBand: gateReport.clearanceBand,
   };
   state.lastResult = result;
   // no transfer list — the worker keeps its own copies for the export stage

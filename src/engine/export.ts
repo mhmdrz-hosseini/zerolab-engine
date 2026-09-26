@@ -20,6 +20,7 @@ export interface PackageInfo {
   checks: { name: string; pass: boolean; detail: string }[];
   crown: { u: number; v: number } | null;
   ventCount: number;
+  clearanceBand?: { requestedGap: number; min: number; p10: number; p50: number; p90: number; withinBand: boolean };
 }
 
 export interface PrintFiles {
@@ -84,6 +85,7 @@ export function buildPrintFiles(deps: {
     jacketOuterMm: info.jacketDim.map((d) => Number(d.toFixed(1))),
     basePlateMm: info.plateDim.map((d) => Number(d.toFixed(1))),
     ports: { crown: null as null, ventCount: info.ventCount },
+    clearanceBand: info.clearanceBand,
     hardware: ['6–10 binder clips (25–32 mm), gripping the flat external seam rails'],
     validation: info.checks,
     meshAudit,

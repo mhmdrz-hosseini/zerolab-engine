@@ -44,6 +44,7 @@ const WALL = Number(arg('wall') ?? 5);
 const CLEARANCE = Number(arg('clearance') ?? 0.35);
 const OUT_DIR = arg('out') ?? 'OUTPUT/generated_mold';
 const SIZE = arg('size') ? Number(arg('size')) : undefined;
+const GAP_WINDOW = arg('gap-window') ? Number(arg('gap-window')) : undefined;
 const VERTICAL = arg('vertical') as Axis | undefined;
 const SPLIT = arg('split') as Axis | undefined;
 const NO_ZIP = has('no-zip');
@@ -141,7 +142,7 @@ console.log(`${el()} ranked axes: ${rankedAxes.join(' → ')}`);
 // --- generate ---
 const pkg = await generateMoldPackage({
   mod, master: full, grid,
-  params: { gap: GAP, wall: WALL, clearance: CLEARANCE, verticalAxis: VERTICAL, splitAxis: SPLIT },
+  params: { gap: GAP, wall: WALL, clearance: CLEARANCE, verticalAxis: VERTICAL, splitAxis: SPLIT, gapWindow: GAP_WINDOW },
   rankedAxes, ports: false,
   onProgress: (stage) => console.log(`${el()} ${stage}`),
 });
@@ -161,6 +162,7 @@ const gates = runGates({
   pieceArrays: [pkg.pieces.jacketA, pkg.pieces.jacketB, pkg.pieces.basePlate],
   siliconeMl: pkg.siliconeMl,
   cavityLoops: pkg.cavityLoops, cavitySections: pkg.cavitySections,
+  gapWindow: GAP_WINDOW,
 });
 let failures = 0;
 for (const c of gates.checks) {
@@ -212,6 +214,7 @@ try {
       checks: gates.checks,
       crown: null,
       ventCount: pkg.ports.vents.length,
+      clearanceBand: gates.clearanceBand,
     },
   }));
 } catch (err) {

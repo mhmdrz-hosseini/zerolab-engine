@@ -46,6 +46,8 @@ export interface GenerateParams {
   clearance: number; // joint clearance (mm)
   verticalAxis?: Axis; // explicit pour axis (default: stable-base auto pick)
   splitAxis?: Axis;    // explicit pull axis (default: ranked auto ladder)
+  gapWindow?: number;  // envelope pull-clearance window (mm); default = gap
+                       // (V0.3 behavior). Smaller = tighter hug, less silicone.
 }
 
 export interface GenerateResult {
@@ -60,6 +62,7 @@ export interface GenerateResult {
   checks: { name: string; pass: boolean; hard: boolean; detail: string }[];
   gatesPass: boolean;                    // all hard gates green — export allowed
   ports: { crown: { u: number; v: number } | null; vents: number };
+  clearanceBand?: { requestedGap: number; min: number; p10: number; p50: number; p90: number; withinBand: boolean };
 }
 
 // ---- worker protocol ----

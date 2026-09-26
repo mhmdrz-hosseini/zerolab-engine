@@ -192,24 +192,30 @@ const bbOf = (m: MeshArrays) => {
     }
   return [max[0] - min[0], max[1] - min[1], max[2] - min[2]] as number[];
 };
-const { files, zip, fileName } = buildPrintFiles({
-  masterBase,
-  parts: { ...pkg.pieces, siliconeSkin: pkg.pieces.skin, master: full, masterBase },
-  info: {
-    name: input.split(/[\\/]/).pop()!.replace(/\.[^.]+$/, ''),
-    createdAt: new Date().toISOString(),
-    params: { gap: GAP, wall: WALL, clearance: CLEARANCE },
-    axis: pkg.axis,
-    siliconeMl: pkg.siliconeMl,
-    extraction: { A: pkg.extraction.A.freeAtMm, B: pkg.extraction.B.freeAtMm },
-    jacketDim: [...pkg.jacketDim],
-    plateDim: [...bbOf(pkg.pieces.basePlate)],
-    warnings: [...gates.warnings, ...pkg.warnings, ...warnings, ...report.warnings],
-    checks: gates.checks,
-    crown: null,
-    ventCount: pkg.ports.vents.length,
-  },
-});
+let files: Record<string, Uint8Array>, zip: Uint8Array, fileName: string;
+try {
+  ({ files, zip, fileName } = buildPrintFiles({
+    masterBase,
+    parts: { ...pkg.pieces, siliconeSkin: pkg.pieces.skin, master: full, masterBase },
+    info: {
+      name: input.split(/[\\/]/).pop()!.replace(/\.[^.]+$/, ''),
+      createdAt: new Date().toISOString(),
+      params: { gap: GAP, wall: WALL, clearance: CLEARANCE },
+      axis: pkg.axis,
+      siliconeMl: pkg.siliconeMl,
+      extraction: { A: pkg.extraction.A.freeAtMm, B: pkg.extraction.B.freeAtMm },
+      jacketDim: [...pkg.jacketDim],
+      plateDim: [...bbOf(pkg.pieces.basePlate)],
+      warnings: [...gates.warnings, ...pkg.warnings, ...warnings, ...report.warnings],
+      checks: gates.checks,
+      crown: null,
+      ventCount: pkg.ports.vents.length,
+    },
+  }));
+} catch (err) {
+  console.error(`generate_mold: ${err instanceof Error ? err.message : err}`);
+  process.exit(1);
+}
 mkdirSync(OUT_DIR, { recursive: true });
 for (const [path, data] of Object.entries(files)) {
   const p = `${OUT_DIR}/${path}`;

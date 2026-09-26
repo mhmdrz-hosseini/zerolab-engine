@@ -1,6 +1,10 @@
 // Print-package builder — SPEC §4-I: STL set + project.json + assembly.md, zipped.
+// Every part passes through cleanExportMesh and the export mesh gate (hard):
+// watertight, zero degenerate faces, zero zero-volume components — a slicer
+// must never have to repair this platform's output.
 import { zipSync, type Zippable } from 'fflate';
 import { writeStlBinary } from './stl';
+import { cleanExportMesh, type MeshAudit } from './clean';
 import type { GenerateParams, MeshArrays } from './types';
 
 export interface PackageInfo {
@@ -43,6 +47,24 @@ export function buildPrintFiles(deps: {
     { name: 'jacket B', file: '02_jacket/jacket_B.stl', mesh: parts.jacketB, note: 'print rim-down; groove side is the mating face' },
     { name: 'silicone skin preview', file: '03_preview/silicone_skin.stl', mesh: parts.siliconeSkin, note: 'NOT printed — this is the mold the silicone will become' },
   ];
+
+  // export mesh gate (hard): clean every part, then require a watertight,
+  // degenerate-free result before anything is written
+  const meshAudit: Record<string, MeshAudit & { droppedTris: number; mergedVerts: number }> = {};
+  const gateFailures: string[] = [];
+  for (const p of partDefs) {
+    const cleaned = cleanExportMesh(p.mesh);
+    p.mesh = cleaned.mesh;
+    meshAudit[p.file] = { ...cleaned.audit, droppedTris: cleaned.stats.droppedTris, mergedVerts: cleaned.stats.mergedVerts };
+    const a = cleaned.audit;
+    if (!a.watertight) gateFailures.push(`${p.file}: not watertight (boundary ${a.boundaryEdges}, non-manifold ${a.nonManifoldEdges})`);
+    if (a.degenerateTris > 0) gateFailures.push(`${p.file}: ${a.degenerateTris} degenerate face(s) survived cleanup`);
+    if (a.zeroVolumeComponents > 0) gateFailures.push(`${p.file}: ${a.zeroVolumeComponents} zero-volume component(s) survived cleanup`);
+  }
+  if (gateFailures.length > 0) {
+    throw new Error(`Export mesh gate failed — package NOT written. ${gateFailures.join(' · ')}`);
+  }
+
   const partMeta = partDefs.map((p) => ({
     name: p.name,
     file: p.file,
@@ -64,6 +86,7 @@ export function buildPrintFiles(deps: {
     ports: { crown: null as null, ventCount: info.ventCount },
     hardware: ['6–10 binder clips (25–32 mm), gripping the flat external seam rails'],
     validation: info.checks,
+    meshAudit,
     warnings: info.warnings,
     parts: partMeta,
   };
@@ -90,14 +113,10 @@ ${partMeta.map((p) => `- **${p.name}** — \`${p.file}\` (${p.triangles.toLocale
 ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).join('\n')}` : ''}
 `;
 
-  const files: Record<string, Uint8Array> = {
-    [`${root}/01_master/master_base.stl`]: stl(masterMesh),
-    [`${root}/02_jacket/jacket_A.stl`]: stl(parts.jacketA),
-    [`${root}/02_jacket/jacket_B.stl`]: stl(parts.jacketB),
-    [`${root}/03_preview/silicone_skin.stl`]: stl(parts.siliconeSkin),
-    [`${root}/project.json`]: new TextEncoder().encode(JSON.stringify(project, null, 2)),
-    [`${root}/assembly.md`]: new TextEncoder().encode(assembly),
-  };
+  const files: Record<string, Uint8Array> = {};
+  for (const p of partDefs) files[`${root}/${p.file}`] = stl(p.mesh); // post-cleanup meshes
+  files[`${root}/project.json`] = new TextEncoder().encode(JSON.stringify(project, null, 2));
+  files[`${root}/assembly.md`] = new TextEncoder().encode(assembly);
   const zip = zipSync(files as Zippable, { level: 1 });
   return { files, zip, fileName: `${root}.zip` };
 }

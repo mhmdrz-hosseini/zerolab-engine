@@ -1,0 +1,39 @@
+{
+  "name": "mold-generator",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "smoke": "tsx scripts/smoke.ts",
+    "smoke:offset": "tsx scripts/smoke_offset.ts",
+    "smoke:m3": "tsx scripts/smoke_m3.ts",
+    "smoke:m4": "tsx scripts/smoke_m4.ts",
+    "smoke:m5": "tsx scripts/smoke_m5.ts",
+    "smoke:ai": "tsx scripts/smoke_ai.ts",
+    "postinstall": "node scripts/sync-wasm.mjs"
+  },
+  "dependencies": {
+    "@react-three/drei": "^10.0.0",
+    "@react-three/fiber": "^9.0.0",
+    "fflate": "^0.8.3",
+    "manifold-3d": "3.5.3",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "three": "^0.169.0",
+    "three-mesh-bvh": "^0.8.0",
+    "zustand": "^5.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.169.0",
+    "@vitejs/plugin-react": "^4.3.2",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.9"
+  }
+}

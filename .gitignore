@@ -1,0 +1,12 @@
+node_modules/
+dist/
+scratch/
+
+# Large asset trees (reference models, study sets, generated packages) — not versioned
+OUTPUT/
+INPUT/
+REFRENCE/
+IDEAL FOR THE STUDY/
+
+*.log
+.DS_Store

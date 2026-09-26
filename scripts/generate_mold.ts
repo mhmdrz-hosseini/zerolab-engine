@@ -52,6 +52,7 @@ const MATERIAL = (arg('material') as 'silicone' | 'hotWax' | undefined) ?? undef
 const PANELS = Number(arg('panels') ?? 2) === 3 ? 3 as const : 2 as const;
 const CLAMP_MODE_RAW = arg('clamp');
 const CLAMP_MODE = CLAMP_MODE_RAW === 'printed' || CLAMP_MODE_RAW === 'hybrid' ? CLAMP_MODE_RAW : 'binder' as const;
+const BASE_LOCK = has('base-lock');
 const VERTICAL = arg('vertical') as Axis | undefined;
 const SPLIT = arg('split') as Axis | undefined;
 const NO_ZIP = has('no-zip');
@@ -149,7 +150,7 @@ console.log(`${el()} ranked axes: ${rankedAxes.join(' → ')}`);
 // --- generate ---
 const pkg = await generateMoldPackage({
   mod, master: full, grid,
-  params: { gap: GAP, wall: WALL, clearance: CLEARANCE, verticalAxis: VERTICAL, splitAxis: SPLIT, gapWindow: GAP_WINDOW, ribs: RIBS, material: MATERIAL, panels: PANELS, clampMode: CLAMP_MODE },
+  params: { gap: GAP, wall: WALL, clearance: CLEARANCE, verticalAxis: VERTICAL, splitAxis: SPLIT, gapWindow: GAP_WINDOW, ribs: RIBS, material: MATERIAL, panels: PANELS, clampMode: CLAMP_MODE, baseLock: BASE_LOCK },
   rankedAxes, ports: false,
   onProgress: (stage) => console.log(`${el()} ${stage}`),
 });
@@ -252,6 +253,10 @@ try {
         ...(pkg.clampPlan.warning ? { warning: pkg.clampPlan.warning } : {}),
       },
       zeroClip: pkg.zeroClip,
+      baseLockA: pkg.baseLockA,
+      baseLockB: pkg.baseLockB,
+      baseLockClip: pkg.baseLockClip,
+      baseLockClips: pkg.baseLockClips,
       clearanceBand: gates.clearanceBand,
       printability,
     },

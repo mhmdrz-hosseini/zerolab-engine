@@ -203,7 +203,7 @@ async function generate(params: GenerateParams): Promise<void> {
       gap, wall, clearance: params.clearance,
       verticalAxis: params.verticalAxis, splitAxis: params.splitAxis,
       gapWindow: params.gapWindow, ribs: params.ribs, material: params.material, panels: params.panels,
-      clampMode: params.clampMode,
+      clampMode: params.clampMode, baseLock: params.baseLock,
     },
     rankedAxes,
     ports: false,
@@ -270,9 +270,12 @@ async function generate(params: GenerateParams): Promise<void> {
       siliconeSkin: pkg.pieces.skin,
       ...(is3 ? { jacketB1: pkg.pieces.jacketB1!, jacketB2: pkg.pieces.jacketB2! } : {}),
       ...(pkg.zeroClip ? { zeroClip: pkg.zeroClip } : {}),
+      ...(pkg.baseLockA && pkg.baseLockB
+        ? { baseLockA: pkg.baseLockA, baseLockB: pkg.baseLockB, ...(pkg.baseLockClip ? { baseLockClip: pkg.baseLockClip } : {}) }
+        : {}),
     },
     siliconeMl: pkg.siliconeMl, outerDim: pkg.jacketDim,
-    params: { gap, wall, clearance: params.clearance, gapWindow: params.gapWindow, ribs: params.ribs, material: params.material, panels: pkg.panels, clampMode: params.clampMode },
+    params: { gap, wall, clearance: params.clearance, gapWindow: params.gapWindow, ribs: params.ribs, material: params.material, panels: pkg.panels, clampMode: params.clampMode, baseLock: params.baseLock },
     axis: pkg.axis,
     elapsedMs: Date.now() - t0,
     extraction: {
@@ -341,6 +344,10 @@ async function exportPackage(): Promise<void> {
       ventCount: r.ports.vents,
       fastening: r.fastening,
       zeroClip: r.parts.zeroClip ?? null,
+      baseLockA: r.parts.baseLockA ?? null,
+      baseLockB: r.parts.baseLockB ?? null,
+      baseLockClip: r.parts.baseLockClip ?? null,
+      baseLockClips: r.parts.baseLockClip ? 2 : 0,
     },
   });
   const blob = zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.byteLength) as ArrayBuffer;

@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import { trappedColumnMask } from './analyze';
+import { buildBaseLock } from './baseLock';
 import { buildZeroClip, planClampStations, validateZeroClip, type ClampPlan, type RibExclusion } from './clamps';
 import { type Loops } from './contours';
 import { buildEnvelope } from './envelope';
@@ -118,12 +119,10 @@ export function pickFrame(pull: Axis, master: MeshArrays, vertical?: Axis): Mold
   };
 }
 
-/**
- * Extrude a vert-frame 2D profile (coords = (u3, v3) values of the vert axis)
+/** Extrude a vert-frame 2D profile (coords = (u3, v3) values of the vert axis)
  * along the vert axis from `from` to `to`. Rotation paths verified against
- * Manifold's CCW-positive 2D rotate (the old X path mirrored — fixed here).
- */
-function prismOnVert(cs: CS, v: number, from: number, to: number): ManifoldInstance {
+ * Manifold's CCW-positive 2D rotate (the old X path mirrored — fixed here). */
+export function prismOnVert(cs: CS, v: number, from: number, to: number): ManifoldInstance {
   const h = to - from;
   if (v === 2) return cs.extrude(h).translate(0, 0, from);
   if (v === 1) return cs.rotate(-90).extrude(h).rotate(-90, 0, 0).translate(0, from, 0);
@@ -241,6 +240,10 @@ export interface AxisAttempt {
   ports: PortsPlan;
   clampPlan: ClampPlan;  // clip stations on the frozen seam rail (always computed — binder guidance too)
   zeroClip: MeshArrays | null; // seated ZeroClip at the first station (identical geometry for all — printed mode only)
+  baseLockA: MeshArrays | null; // BaseLock collar halves (+pull / −pull) and mini-clip geometry
+  baseLockB: MeshArrays | null;
+  baseLockClip: MeshArrays | null;
+  baseLockClips: number;
   siliconeMl: number;
   cavityLoops: Loops;    // cavity prism outline, vert-frame (u3, v3) coords — fill-gate seed region
   cavitySections: { height: number; loops: Loops }[];
@@ -657,6 +660,28 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
       }
     }
 
+    // V0.5 P1: optional BaseLock collar (fail-soft — hardware never fails the
+    // package). Built from the plate outline + the assembled jacket's own
+    // silhouette; zero changes to the frozen jacket/plate geometry.
+    let baseLockA: MeshArrays | null = null, baseLockB: MeshArrays | null = null;
+    let baseLockClip: MeshArrays | null = null, baseLockClips = 0;
+    if (params.baseLock) {
+      progress('Building BaseLock collar', 0.97);
+      try {
+        const bl = buildBaseLock({ track, csCtor, outline: plateOutlineCS, jacket, frame, axis });
+        const aPrint = printable(bl.halfA, 'BaseLock A');
+        const bPrint = printable(bl.halfB, 'BaseLock B');
+        baseLockA = instanceToMeshArrays(aPrint);
+        baseLockB = instanceToMeshArrays(bPrint);
+        if (bl.clip) {
+          baseLockClip = instanceToMeshArrays(bl.clip);
+          baseLockClips = bl.clipCount;
+        }
+      } catch (err) {
+        warnings.push(`BaseLock disabled: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
     const ob = bboxOfArrays(jacketSolidArr);
     const jacketDim = [ob.dim[0], ob.dim[1], ob.dim[2]] as [number, number, number];
     const pb = bboxOfArrays(plateArr);
@@ -678,6 +703,10 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
       ports,
       clampPlan,
       zeroClip,
+      baseLockA,
+      baseLockB,
+      baseLockClip,
+      baseLockClips,
       siliconeMl,
       cavityLoops,
       cavitySections: envelope.sections,
@@ -776,6 +805,10 @@ export interface MoldPackage {
   ports: PortsPlan;
   clampPlan: ClampPlan;
   zeroClip: MeshArrays | null;
+  baseLockA: MeshArrays | null;
+  baseLockB: MeshArrays | null;
+  baseLockClip: MeshArrays | null;
+  baseLockClips: number;
   siliconeMl: number;
   cavityLoops: Loops;
   cavitySections: { height: number; loops: Loops }[];

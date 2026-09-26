@@ -22,6 +22,10 @@ export interface PackageInfo {
   ventCount: number;
   fastening?: FasteningInfo;
   zeroClip?: MeshArrays | null; // seated ZeroClip geometry — exported once, printed N×
+  baseLockA?: MeshArrays | null;
+  baseLockB?: MeshArrays | null;
+  baseLockClip?: MeshArrays | null;
+  baseLockClips?: number;
   clearanceBand?: { requestedGap: number; min: number; p10: number; p50: number; p90: number; withinBand: boolean };
   printability?: Record<string, {
     bedAreaMm2: number; overhangAreaMm2: number; layerStep: number; layers: number;
@@ -68,6 +72,14 @@ export function buildPrintFiles(deps: {
       name: `zero clip ×${info.fastening?.clipCount ?? '?'}`, file: '04_hardware/zero_clip.stl', mesh: info.zeroClip,
       note: 'print N of these in PETG, flat on the bed as exported — spring onto the rail stations; never use supports',
     }] : []),
+    ...(info.baseLockA && info.baseLockB ? [
+      { name: 'base lock A', file: '04_hardware/base_lock_A.stl', mesh: info.baseLockA, note: 'collar half (+pull) — print top-ring-down as exported, PETG for reuse' },
+      { name: 'base lock B', file: '04_hardware/base_lock_B.stl', mesh: info.baseLockB, note: 'collar half (−pull) — slides in from the opposite side' },
+      ...(info.baseLockClip ? [{
+        name: `base lock clip ×${info.baseLockClips ?? 2}`, file: '04_hardware/base_lock_clip.stl', mesh: info.baseLockClip,
+        note: 'mini clip tying the collar halves across the seam — print one per ear',
+      }] : []),
+    ] : []),
   ];
 
   // export mesh gate (hard): clean every part, then require a watertight,
@@ -127,6 +139,7 @@ export function buildPrintFiles(deps: {
       stations: info.fastening.stations,
       warning: info.fastening.warning ?? null,
     } : null,
+    baseLock: info.baseLockA && info.baseLockB ? { enabled: true, parts: 2, clips: info.baseLockClips ?? 2 } : null,
     validation: info.checks,
     meshAudit,
     warnings: info.warnings,
@@ -144,6 +157,7 @@ ${info.fastening && info.fastening.stations.length > 0
       : `- Clip plan: **${info.fastening.stations.length} clamp stations** evenly spaced on the external seam rail (usable rail ≈ ${info.fastening.usableRailMm.toFixed(0)} mm, spacing ≈ ${info.fastening.pitchMm.toFixed(0)} mm) — one 25–32 mm binder clip per station, flat land against the rail. Station coordinates ship in \`project.json → fastening.stations\`.`)
     : '- 6–10 binder clips sized to the 5 mm seam rail stack; removable seam/base sealant'}
 - Removable seam/base sealant${info.fastening?.warning ? `\n- ⚠ ${info.fastening.warning}` : ''}
+${info.baseLockA && info.baseLockB ? `- **BaseLock**: after seating the jackets, slide collar half **A** and half **B** in from opposite ±${info.axis} sides under the plate edge, then close each ear with a mini clip. **Remove the collar and clips before extracting the jackets.**` : ''}
 
 ## Material & print profiles
 ${materialNote}
@@ -234,6 +248,40 @@ ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).
           quantity: info.fastening?.clipCount ?? null,
           fit_note: 'jaws grip the 5 mm rail stack with 0.3 mm total interference — if seating is impossible or slack, recalibrate via the fit coupon',
         },
+      } : {}),
+      ...(info.baseLockA && info.baseLockB ? {
+        base_lock_A: {
+          orientation: 'top-ring-down, as exported — the flat cap ring is the bed face',
+          material: 'PETG',
+          nozzle_mm: 0.4,
+          layer_height_mm: 0.2,
+          perimeters: 4,
+          infill_percent: [25, 40],
+          support: 'none — all faces are vertical walls or horizontal beds',
+          note: 'captures the jacket rim to the plate (0.6 mm capture travel); slide on after seating the jackets',
+        },
+        base_lock_B: {
+          orientation: 'top-ring-down, as exported — the flat cap ring is the bed face',
+          material: 'PETG',
+          nozzle_mm: 0.4,
+          layer_height_mm: 0.2,
+          perimeters: 4,
+          infill_percent: [25, 40],
+          support: 'none — all faces are vertical walls or horizontal beds',
+          note: 'mirror of base_lock_A — slides in from the opposite side; remove both before jacket extraction',
+        },
+        ...(info.baseLockClip ? {
+          base_lock_clip: {
+            orientation: 'flat on the bed, as exported',
+            material: 'PETG',
+            nozzle_mm: 0.4,
+            layer_height_mm: 0.2,
+            perimeters: '4–5',
+            infill_percent: 100,
+            support: 'none',
+            quantity: info.baseLockClips ?? 2,
+          },
+        } : {}),
       } : {}),
     },
   };

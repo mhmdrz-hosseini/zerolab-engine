@@ -54,6 +54,7 @@ export function GeneratePanel() {
   const [ribs, setRibs] = useState(false);
   const [material, setMaterial] = useState<'silicone' | 'hotWax'>('silicone');
   const [clampMode, setClampMode] = useState<'binder' | 'printed' | 'hybrid'>('binder');
+  const [baseLock, setBaseLock] = useState(false);
 
   if (!report) return null;
   const p = PRESETS.find((x) => x.id === preset)!;
@@ -67,6 +68,7 @@ export function GeneratePanel() {
     ribs,
     material,
     clampMode,
+    baseLock,
   };
   const busy = phase === 'busy';
 
@@ -121,6 +123,9 @@ export function GeneratePanel() {
             {label}
           </button>
         ))}
+        <button className={`chip${baseLock ? ' on' : ''}`} onClick={() => setBaseLock(!baseLock)} disabled={busy} title="two-piece collar capturing the jacket rim to the base plate (experimental — fail-soft)">
+          BaseLock
+        </button>
       </div>
       <button className="btn primary wide" onClick={() => generate(params)} disabled={busy}>
         {result ? 'Regenerate' : 'Generate silicone skin'}

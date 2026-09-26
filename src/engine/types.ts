@@ -55,6 +55,8 @@ export interface GenerateParams {
   clampMode?: 'binder' | 'printed' | 'hybrid'; // seam fastening: binder clips
                        // (default, legacy), printed ZeroClips on the rail
                        // stations, or printed at stations + binder as filler
+  baseLock?: boolean;  // optional two-piece collar capturing the jacket rim to
+                       // the base plate (experimental; fail-soft)
 }
 
 // V0.5 manufacturing-reliability layer: clip placement on the frozen seam rail.

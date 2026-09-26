@@ -3,6 +3,13 @@
 Approved decision record from the 2026-09-26 grilling (3 rounds, all recommendations accepted).
 Companion docs: `CONTEXT.md` (glossary, 7 new terms), `docs/adr/0001-seam-rail-frozen-interface.md`.
 
+## Status (2026-09-26)
+
+Commits 1–8 LANDED (each independently revertible, all smokes green after every landing):
+`a1f4f87` station planner (+`400c1b8` pre-existing m4/clean fixes) · `4d53ba8` ZeroClip · `6f0963d` BaseLock · `09c8e86` islands · `5d268e9` bed/brim · `3b7d024` precision warning · `071dba9` fit coupon · `f632ef4` worker export fix + printRisk.
+
+**Commit 9 (hard-gate flip) DEFERRED by its own criterion.** The flip required the corpus (hand + sheep + Spider-Man) to run clean on precision overlaps. Measured: every jacket WARNs (17–144 mm² of overhang inside the precision band) because the joint's own designed geometry — lead-in flare, tip taper — lives in the same pull-strip as the rail. A hard gate at any achievable threshold would block every package. The z-band approach cannot separate "support on the rail face" from "the joint's self-jigging features"; that needs semantic submesh tags (deliberately rejected in Round 1 as invasive). The precision warning stays advisory; revisit only with submesh tagging or a physically-validated threshold from the coupon trial.
+
 Source brief: "ZeroLab Manufacturing Reliability Enhancement" (external). This record **overrides** the brief wherever they differ. Central rule unchanged: *additive layer around the existing engine — no rewrite of offset / envelope / split ladder / gates / tongue-groove / base / STL export.*
 
 ## Scope deltas vs the brief

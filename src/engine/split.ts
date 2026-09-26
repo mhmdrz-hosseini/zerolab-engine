@@ -300,6 +300,87 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
     if (v === 1) localRail = track(track(rail.rotate(90, 0, 0)).rotate(0, 0, 90));
     plateOutlineCS = track(plateOutlineCS.add(track(track(localRail.project()).offset(0.3, 'Round', 2, 32))));
 
+    // External stiffening ribs (audit §3): four vertical fins at the quarter
+    // positions between the seam rails. Each rib is a loft of thin radial
+    // rectangles that follow the envelope's outer surface (the rings are
+    // radially resampled from a fixed center, so the surface radius per angle
+    // is exact), fused `FUSE` deep into the wall and never closer than 0.5 mm
+    // to the cavity — the intrusion guard below stays the authority.
+    if (params.ribs) {
+      progress('Adding external stiffening ribs', 0.55);
+      const RIB_DEPTH = 8, RIB_W = 2;
+      const mb = bboxOfArrays(master);
+      const u3 = (v + 1) % 3, v3 = (v + 2) % 3;
+      const cu = mb.min[u3] + mb.dim[u3] / 2, cw = mb.min[v3] + mb.dim[v3] / 2;
+      const rayR = (loop: number[][], dx: number, dy: number): number => {
+        let bestT = 0;
+        for (let i = 0; i < loop.length; i++) {
+          const ax = loop[i][0] - cu, ay = loop[i][1] - cw;
+          const bx = loop[(i + 1) % loop.length][0] - cu, by = loop[(i + 1) % loop.length][1] - cw;
+          const ex = bx - ax, ey = by - ay;
+          const den = dx * ey - dy * ex;
+          if (Math.abs(den) < 1e-12) continue;
+          const t = (ax * ey - ay * ex) / den;
+          const uu = (ax * dy - ay * dx) / den;
+          if (t > bestT && uu >= -1e-9 && uu <= 1 + 1e-9) bestT = t;
+        }
+        return bestT;
+      };
+      for (const deg of [45, 135, 225, 315]) {
+        const th = (deg * Math.PI) / 180;
+        const dx = Math.cos(th), dy = Math.sin(th);
+        const px = -dy, py = dx; // tangential
+        const corners: number[][] = [];
+        let lastR = 0;
+        for (const s of envelope.sections) {
+          const loop = s.loops[0];
+          if (!loop || loop.length < 3) continue;
+          const rCav = rayR(loop, dx, dy) || lastR;
+          if (rCav <= 0) continue;
+          lastR = rCav;
+          // the rib is a flat 2 mm slab — the cavity radius varies across its
+          // tangential span, so fuse below the DEEPEST of three rays
+          const dth = Math.atan(RIB_W / 2 / Math.max(rCav, 1)) + 0.004;
+          const rIn = Math.max(
+            rayR(loop, Math.cos(th - dth), Math.sin(th - dth)),
+            rCav,
+            rayR(loop, Math.cos(th + dth), Math.sin(th + dth)),
+          ) + 0.5;
+          const rOut = rCav + wall * 1.45 + RIB_DEPTH;
+          for (const [t, q] of [[rIn, -RIB_W / 2], [rOut, -RIB_W / 2], [rOut, RIB_W / 2], [rIn, RIB_W / 2]]) {
+            corners.push([cu + dx * t + px * q, cw + dy * t + py * q, s.height]);
+          }
+        }
+        if (corners.length < 8) continue;
+        const verts: number[] = [], tris: number[] = [];
+        for (const c of corners) verts.push(c[0], c[1], c[2]);
+        const nR = corners.length / 4;
+        for (let k = 0; k < nR - 1; k++) {
+          const b = k * 4, t = b + 4;
+          for (let j = 0; j < 4; j++) {
+            const a = b + j, bb = b + (j + 1) % 4, c = t + (j + 1) % 4, d = t + j;
+            tris.push(a, bb, c, a, c, d);
+          }
+        }
+        // side quads run bottom edges CCW / top edges CW — caps must oppose:
+        // bottom reversed, top as-triangulated
+        const top = (nR - 1) * 4;
+        for (const tri of THREE.ShapeUtils.triangulateShape([0, 1, 2, 3].map((j) => new THREE.Vector2(corners[j][0], corners[j][1])), [])) tris.push(tri[2], tri[1], tri[0]);
+        for (const tri of THREE.ShapeUtils.triangulateShape([top, top + 1, top + 2, top + 3].map((j) => new THREE.Vector2(corners[j][0], corners[j][1])), [])) tris.push(top + tri[0], top + tri[1], top + tri[2]);
+        const ribRot = track(new mod.Manifold(new mod.Mesh({
+          numProp: 3,
+          vertProperties: Float32Array.from(verts),
+          triVerts: Uint32Array.from(tris),
+        })));
+        if (!isOk(ribRot)) throw new Error('kernel rejected a stiffening rib');
+        const rib = track(invRotate(ribRot));
+        jacket = track(jacket.add(rib));
+      }
+      const intrusionR = track(jacket.intersect(cavitySolid));
+      if (intrusionR.volume() > 0.01) throw new Error('stiffening ribs intrude into the silicone cavity');
+      if (!isOk(jacket)) throw new Error('kernel rejected the ribbed jacket');
+    }
+
     // Elephant-foot relief (audit §13): the bottom 0.5 mm of every bed-contact
     // face steps inward (0.2 then 0.1 mm) so first-layer squish cannot swell
     // the jacket past its seating/mating surfaces. Built as removal rings whose

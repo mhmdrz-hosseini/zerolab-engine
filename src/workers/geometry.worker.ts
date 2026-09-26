@@ -259,7 +259,7 @@ async function generate(params: GenerateParams): Promise<void> {
       siliconeSkin: pkg.pieces.skin,
     },
     siliconeMl: pkg.siliconeMl, outerDim: pkg.jacketDim,
-    params: { gap, wall, clearance: params.clearance },
+    params: { gap, wall, clearance: params.clearance, gapWindow: params.gapWindow, ribs: params.ribs, material: params.material },
     axis: pkg.axis,
     elapsedMs: Date.now() - t0,
     extraction: { A: pkg.extraction.A.freeAtMm, B: pkg.extraction.B.freeAtMm },

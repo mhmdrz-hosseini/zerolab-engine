@@ -26,6 +26,15 @@ const ENVELOPES = [
   { id: 'full', label: 'Full clearance', note: 'V0.3 window — maximum release margin' },
   { id: 'tight', label: 'Tight hug', note: '½-gap window — less silicone, test-print first' },
 ] as const;
+// Jacket wall (audit §1/§3): the seam rails and seating rim are reinforced by
+// construction; the wall chip sizes the body shell. 5 mm remains the default
+// until the physical coupon trial (core invariant 12).
+const WALLS = [
+  { id: 'light', label: 'Light · 4 mm', wall: 4, note: 'audit-recommended body wall with reinforced rails' },
+  { id: 'standard', label: 'Standard · 5 mm', wall: 5, note: 'V0.3 default — maximum margin' },
+  { id: 'heavy', label: 'Heavy · 6.5 mm', wall: 6.5, note: 'production / rough handling' },
+] as const;
+type WallId = (typeof WALLS)[number]['id'];
 type EnvelopeId = (typeof ENVELOPES)[number]['id'];
 
 export function GeneratePanel() {
@@ -41,15 +50,21 @@ export function GeneratePanel() {
   const [preset, setPreset] = useState<PresetId>('standard');
   const [fit, setFit] = useState<FitId>('standard');
   const [envelope, setEnvelope] = useState<EnvelopeId>('full');
+  const [wall, setWall] = useState<WallId>('standard');
+  const [ribs, setRibs] = useState(false);
+  const [material, setMaterial] = useState<'silicone' | 'hotWax'>('silicone');
 
   if (!report) return null;
   const p = PRESETS.find((x) => x.id === preset)!;
   const f = FITS.find((x) => x.id === fit)!;
+  const w = WALLS.find((x) => x.id === wall)!;
   const params: GenerateParams = {
     gap: p.gap,
-    wall: f.wall,
+    wall: f.id === 'resin' ? 2 : w.wall,
     clearance: f.clearance,
     gapWindow: envelope === 'tight' ? Math.max(1.5, p.gap / 2) : undefined,
+    ribs,
+    material,
   };
   const busy = phase === 'busy';
 
@@ -71,11 +86,29 @@ export function GeneratePanel() {
         ))}
       </div>
       <div className="chips">
+        {WALLS.map((x) => (
+          <button key={x.id} className={`chip${wall === x.id ? ' on' : ''}`} onClick={() => setWall(x.id)} disabled={busy} title={x.note}>
+            {x.label}
+          </button>
+        ))}
+        <button className={`chip${ribs ? ' on' : ''}`} onClick={() => setRibs(!ribs)} disabled={busy} title="four external 8 mm stiffening fins on the jacket body">
+          Ribs
+        </button>
+      </div>
+      <div className="chips">
         {ENVELOPES.map((x) => (
           <button key={x.id} className={`chip${envelope === x.id ? ' on' : ''}`} onClick={() => setEnvelope(x.id)} disabled={busy} title={x.note}>
             {x.label}
           </button>
         ))}
+      </div>
+      <div className="chips">
+        <button className={`chip${material === 'silicone' ? ' on' : ''}`} onClick={() => setMaterial('silicone')} disabled={busy} title="room-temperature RTV pour — PLA is fine">
+          Silicone (PLA ok)
+        </button>
+        <button className={`chip${material === 'hotWax' ? ' on' : ''}`} onClick={() => setMaterial('hotWax')} disabled={busy} title="jacket stays on while pouring hot wax — print jackets in PETG/ASA">
+          Hot wax (PETG)
+        </button>
       </div>
       <button className="btn primary wide" onClick={() => generate(params)} disabled={busy}>
         {result ? 'Regenerate' : 'Generate silicone skin'}
@@ -100,6 +133,17 @@ export function GeneratePanel() {
                 Silicone efficiency: requested {b.requestedGap.toFixed(0)} mm · median hug {b.p50.toFixed(1)} mm
                 (min {b.min} · p90 {b.p90})
                 {excess > 0 ? ` · excess ≈ ${excess} mL${envelope === 'full' ? ' — Tight hug recovers part of it' : ''}` : ' · on target'}
+              </div>
+            );
+          })()}
+          {(() => {
+            const trapped = report?.axes.find((a) => a.axis === result.axis)?.trappedPct ?? 0;
+            const v = trapped <= 5 ? { label: 'HIGH', cls: 'pass' } : trapped <= 12 ? { label: 'MEDIUM', cls: 'soft' } : { label: 'LOW', cls: 'fail' };
+            return (
+              <div className={`gate ${v.cls}`}>
+                <span className="gate-mark">{trapped <= 5 ? '✓' : '⚠'}</span>
+                <span className="gate-name">2-piece release confidence: {v.label}</span>
+                <span className="gate-detail">{trapped.toFixed(1)}% trapped geometry along ±{result.axis}{trapped > 5 ? ' — test-print before committing; multi-panel jackets (planned) raise this' : ''}</span>
               </div>
             );
           })()}

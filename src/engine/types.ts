@@ -48,6 +48,9 @@ export interface GenerateParams {
   splitAxis?: Axis;    // explicit pull axis (default: ranked auto ladder)
   gapWindow?: number;  // envelope pull-clearance window (mm); default = gap
                        // (V0.3 behavior). Smaller = tighter hug, less silicone.
+  ribs?: boolean;      // external stiffening ribs (8 mm fins) on the jacket body
+  material?: 'silicone' | 'hotWax'; // casting material — drives the material
+                       // guidance (PLA fine for room-temp RTV; PETG/ASA for hot wax)
 }
 
 export interface GenerateResult {

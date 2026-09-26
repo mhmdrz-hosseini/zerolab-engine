@@ -45,6 +45,8 @@ const CLEARANCE = Number(arg('clearance') ?? 0.35);
 const OUT_DIR = arg('out') ?? 'OUTPUT/generated_mold';
 const SIZE = arg('size') ? Number(arg('size')) : undefined;
 const GAP_WINDOW = arg('gap-window') ? Number(arg('gap-window')) : undefined;
+const RIBS = has('ribs');
+const MATERIAL = (arg('material') as 'silicone' | 'hotWax' | undefined) ?? undefined;
 const VERTICAL = arg('vertical') as Axis | undefined;
 const SPLIT = arg('split') as Axis | undefined;
 const NO_ZIP = has('no-zip');
@@ -142,7 +144,7 @@ console.log(`${el()} ranked axes: ${rankedAxes.join(' → ')}`);
 // --- generate ---
 const pkg = await generateMoldPackage({
   mod, master: full, grid,
-  params: { gap: GAP, wall: WALL, clearance: CLEARANCE, verticalAxis: VERTICAL, splitAxis: SPLIT, gapWindow: GAP_WINDOW },
+  params: { gap: GAP, wall: WALL, clearance: CLEARANCE, verticalAxis: VERTICAL, splitAxis: SPLIT, gapWindow: GAP_WINDOW, ribs: RIBS, material: MATERIAL },
   rankedAxes, ports: false,
   onProgress: (stage) => console.log(`${el()} ${stage}`),
 });
@@ -204,7 +206,7 @@ try {
     info: {
       name: input.split(/[\\/]/).pop()!.replace(/\.[^.]+$/, ''),
       createdAt: new Date().toISOString(),
-      params: { gap: GAP, wall: WALL, clearance: CLEARANCE },
+      params: { gap: GAP, wall: WALL, clearance: CLEARANCE, gapWindow: GAP_WINDOW, ribs: RIBS, material: MATERIAL },
       axis: pkg.axis,
       siliconeMl: pkg.siliconeMl,
       extraction: { A: pkg.extraction.A.freeAtMm, B: pkg.extraction.B.freeAtMm },

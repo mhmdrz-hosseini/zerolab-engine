@@ -71,7 +71,14 @@ export function buildPrintFiles(deps: {
     file: p.file,
     note: p.note,
     triangles: p.mesh.triVerts.length / 3,
+    volumeCm3: meshAudit[p.file]?.volumeCm3,
   }));
+
+  const materialNote = info.params.material === 'hotWax'
+    ? `- **Casting material: hot wax (jacket stays on while pouring)** — print the jackets in **PETG/ASA/ABS**; common wax pours (57–79 °C) exceed PLA's ~55 °C heat-deflection point. The master can stay PLA.`
+    : info.params.material === 'silicone'
+      ? `- **Casting material: room-temperature RTV silicone** — **PLA is fine** for every part (the liquid pressure on these walls is ~0.25 psi).`
+      : `- **Pouring RTV silicone only → PLA is fine.** **Pouring hot candle wax while the jacket stays on → use PETG/ASA/ABS** (wax pours at 57–79 °C, above PLA's ~55 °C heat-deflection point).`;
 
   const project = {
     format: 'matrix-mold-pourbox/0.3',
@@ -86,6 +93,7 @@ export function buildPrintFiles(deps: {
     basePlateMm: info.plateDim.map((d) => Number(d.toFixed(1))),
     ports: { crown: null as null, ventCount: info.ventCount },
     clearanceBand: info.clearanceBand,
+    castingMaterial: info.params.material ?? null,
     hardware: ['6–10 binder clips (25–32 mm), gripping the flat external seam rails'],
     validation: info.checks,
     meshAudit,
@@ -101,9 +109,8 @@ Split axis: **±${info.axis}** · Silicone needed: **≈ ${info.siliconeMl.toFix
 - 6–10 binder clips sized to the 5 mm seam rail stack; removable seam/base sealant
 
 ## Material & print profiles
+${materialNote}
 - Per-part slicer settings ship in \`print_profile.json\` — the **master** wants quality (0.12–0.16 mm layers; the silicone reproduces its surface), the **jackets** want speed/structure (0.6 mm nozzle OK).
-- **Pouring RTV silicone only → PLA is fine** (room-temperature pour; the liquid pressure on these walls is ~0.25 psi).
-- **Pouring hot candle wax while the jacket stays on → use PETG/ASA/ABS.** Wax pours at 57–79 °C, above PLA's ~55 °C heat-deflection point. Print the jackets in the higher-temperature material in that workflow; the master can stay PLA.
 
 ## Steps
 1. Print \`master_base\` (doll + fused base plate, plate-down), \`jacket_A\` and \`jacket_B\` (rim-down).
@@ -115,7 +122,7 @@ Split axis: **±${info.axis}** · Silicone needed: **≈ ${info.siliconeMl.toFix
 7. Demold the master from the cured silicone. Deep undercuts or enclosed handles may need a planned cut in the silicone; rigid jacket release does not prove master release.
 
 ## Parts
-${partMeta.map((p) => `- **${p.name}** — \`${p.file}\` (${p.triangles.toLocaleString()} tris) — ${p.note}`).join('\n')}
+${partMeta.map((p) => `- **${p.name}** — \`${p.file}\` (${p.triangles.toLocaleString()} tris${p.volumeCm3 ? `, ${p.volumeCm3} cm³` : ''}) — ${p.note}`).join('\n')}
 
 ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).join('\n')}` : ''}
 `;
@@ -124,6 +131,7 @@ ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).
     format: 'matrix-mold-print-profiles/0.3',
     note: 'Per-part slicer settings. The master and the jackets have different quality requirements: the silicone reproduces the master\'s surface finish, the jacket only provides stiffness.',
     material: {
+      choice: info.params.material ?? null,
       silicone_making_only: 'PLA is fine — room-temperature RTV pour, ~0.25 psi hydrostatic pressure at these heights.',
       hot_wax_with_jacket_on: 'PETG / ASA / ABS for the jackets — common wax pour temperatures (57–79 °C) exceed PLA\'s ~55 °C heat-deflection temperature.',
       resin_master_option: 'For the best surface fidelity, print the master in resin and the jackets on FDM.',

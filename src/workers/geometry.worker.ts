@@ -362,6 +362,8 @@ async function exportPackage(): Promise<void> {  if (!state || !state.lastResult
       baseLockB: r.parts.baseLockB ?? null,
       baseLockClip: r.parts.baseLockClip ?? null,
       baseLockClips: r.parts.baseLockClip ? 2 : 0,
+      clearanceBand: r.clearanceBand,
+      printability: r.printability,
     },
   });
   const blob = zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.byteLength) as ArrayBuffer;

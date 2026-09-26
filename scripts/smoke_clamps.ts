@@ -140,12 +140,23 @@ const { files } = buildPrintFiles({
       usableRailMm: planA.usableRailMm, pitchMm: planA.pitchMm, stations: planA.stations,
     },
     zeroClip: clipArr,
+    printability: {
+      jacket_A: {
+        bedAreaMm2: 4231, overhangAreaMm2: 100, layerStep: 0.8, layers: 10, worstBands: [],
+        unsupportedIslands: [{ z: 5, areaMm2: 20 }], islandRisk: 'HIGH',
+        heightMm: 10, slenderness: 0.15, brimMm: 0, bedRisk: 'LOW',
+        precisionOverhangMm2: 0, precisionRisk: 'CLEAR',
+      },
+    },
   },
 });
 const project = JSON.parse(new TextDecoder().decode(files['pourbox_clamp_smoke/project.json']));
 check('project.json carries fastening', project.fastening?.mode === 'printed' && project.fastening?.clipCount === planA.stations.length
   && project.fastening?.binderClipCompatible === true && Array.isArray(project.fastening?.stations),
   `mode ${project.fastening?.mode}, ${project.fastening?.clipCount} stations`);
+check('project.json carries calibration + printRisk', typeof project.calibration?.clipFitOffsetMm === 'number'
+  && project.printRisk?.jacket_A?.risk === 'HIGH' && project.printRisk?.jacket_A?.unsupportedIslandCount === 1,
+  `calibration clipFit ${project.calibration?.clipFitOffsetMm} mm, printRisk jacket_A ${JSON.stringify(project.printRisk?.jacket_A ?? null)}`);
 check('04_hardware/zero_clip.stl exported', !!files['pourbox_clamp_smoke/04_hardware/zero_clip.stl'], `${(files['pourbox_clamp_smoke/04_hardware/zero_clip.stl']?.length ?? 0)} bytes`);
 const profileJson = JSON.parse(new TextDecoder().decode(files['pourbox_clamp_smoke/print_profile.json']));
 check('print_profile has the ZeroClip entry', (profileJson.profiles?.zero_clip?.material ?? '').startsWith('PETG') && /none/i.test(profileJson.profiles?.zero_clip?.support ?? ''),

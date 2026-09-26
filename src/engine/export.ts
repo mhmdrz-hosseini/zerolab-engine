@@ -112,6 +112,19 @@ export function buildPrintFiles(deps: {
       ? `- **Casting material: room-temperature RTV silicone** — **PLA is fine** for every part (the liquid pressure on these walls is ~0.25 psi).`
       : `- **Pouring RTV silicone only → PLA is fine.** **Pouring hot candle wax while the jacket stays on → use PETG/ASA/ABS** (wax pours at 57–79 °C, above PLA's ~55 °C heat-deflection point).`;
 
+  // per-part print risk (grilled schema): diagnostics derived from the
+  // analyzer — risk = the worse of island and bed risk
+  const printRisk = info.printability
+    ? Object.fromEntries(Object.entries(info.printability).map(([part, r]) => [part, {
+      bedAreaMm2: r.bedAreaMm2,
+      unsupportedIslandCount: r.unsupportedIslands.length,
+      slenderness: r.slenderness,
+      brimMm: r.brimMm,
+      risk: r.islandRisk === 'HIGH' || r.bedRisk === 'HIGH' ? 'HIGH'
+        : r.islandRisk === 'MEDIUM' || r.bedRisk === 'MEDIUM' ? 'MEDIUM' : 'LOW',
+    }]))
+    : null;
+
   const project = {
     format: 'matrix-mold-pourbox/0.3',
     name: info.name,
@@ -126,6 +139,7 @@ export function buildPrintFiles(deps: {
     ports: { crown: null as null, ventCount: info.ventCount },
     clearanceBand: info.clearanceBand,
     printability: info.printability,
+    printRisk,
     castingMaterial: info.params.material ?? null,
     hardware: ['6–10 binder clips (25–32 mm), gripping the flat external seam rails'],
     fastening: info.fastening ? {

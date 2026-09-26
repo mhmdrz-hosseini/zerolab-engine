@@ -54,6 +54,22 @@ export interface GenerateParams {
   panels?: 2 | 3;      // 3 = multi-panel jacket (heavy half sub-split ±depth)
 }
 
+// V0.5 manufacturing-reliability layer: clip placement on the frozen seam rail.
+export interface ClampStation {
+  position: [number, number, number]; // clip landing center on the rail's outer face, parting plane
+  railThickness: number;              // measured radial width of the rail band here (mm)
+  index: number;
+}
+
+export interface FasteningInfo {
+  mode: 'binder';        // commit 2 widens to 'binder' | 'printed' | 'hybrid'
+  clipCount: number;
+  usableRailMm: number;
+  pitchMm: number;
+  stations: ClampStation[];
+  warning?: string;
+}
+
 export interface GenerateResult {
   parts: Record<string, MeshArrays>;
   siliconeMl: number;
@@ -68,6 +84,7 @@ export interface GenerateResult {
   gatesPass: boolean;                    // all hard gates green — export allowed
   ports: { crown: { u: number; v: number } | null; vents: number };
   clearanceBand?: { requestedGap: number; min: number; p10: number; p50: number; p90: number; withinBand: boolean };
+  fastening?: FasteningInfo;
   printability?: Record<string, {
     bedAreaMm2: number;
     overhangAreaMm2: number;

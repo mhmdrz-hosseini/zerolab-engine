@@ -12,6 +12,7 @@
     "smoke:m3": "tsx scripts/smoke_m3.ts",
     "smoke:m4": "tsx scripts/smoke_m4.ts",
     "smoke:m5": "tsx scripts/smoke_m5.ts",
+    "smoke:clamps": "tsx scripts/smoke_clamps.ts",
     "smoke:ai": "tsx scripts/smoke_ai.ts",
     "postinstall": "node scripts/sync-wasm.mjs"
   },

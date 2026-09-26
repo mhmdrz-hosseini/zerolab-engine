@@ -5,7 +5,7 @@
 import { zipSync, type Zippable } from 'fflate';
 import { writeStlBinary } from './stl';
 import { cleanExportMesh, type MeshAudit } from './clean';
-import type { GenerateParams, MeshArrays } from './types';
+import type { FasteningInfo, GenerateParams, MeshArrays } from './types';
 
 export interface PackageInfo {
   name: string;
@@ -20,6 +20,7 @@ export interface PackageInfo {
   checks: { name: string; pass: boolean; detail: string }[];
   crown: { u: number; v: number } | null;
   ventCount: number;
+  fastening?: FasteningInfo;
   clearanceBand?: { requestedGap: number; min: number; p10: number; p50: number; p90: number; withinBand: boolean };
   printability?: Record<string, {
     bedAreaMm2: number; overhangAreaMm2: number; layerStep: number; layers: number;
@@ -111,6 +112,16 @@ export function buildPrintFiles(deps: {
     printability: info.printability,
     castingMaterial: info.params.material ?? null,
     hardware: ['6–10 binder clips (25–32 mm), gripping the flat external seam rails'],
+    fastening: info.fastening ? {
+      mode: info.fastening.mode,
+      clipCount: info.fastening.clipCount,
+      clipMaterial: 'PETG',
+      binderClipCompatible: true,
+      usableRailMm: info.fastening.usableRailMm,
+      pitchMm: info.fastening.pitchMm,
+      stations: info.fastening.stations,
+      warning: info.fastening.warning ?? null,
+    } : null,
     validation: info.checks,
     meshAudit,
     warnings: info.warnings,
@@ -122,7 +133,10 @@ export function buildPrintFiles(deps: {
 Split axis: **±${info.axis}** · Silicone needed: **≈ ${info.siliconeMl.toFixed(0)} mL** (prepare ${(info.siliconeMl * 1.1).toFixed(0)} mL)
 
 ## Hardware
-- 6–10 binder clips sized to the 5 mm seam rail stack; removable seam/base sealant
+${info.fastening && info.fastening.stations.length > 0
+    ? `- Clip plan: **${info.fastening.stations.length} clamp stations** evenly spaced on the external seam rail (usable rail ≈ ${info.fastening.usableRailMm.toFixed(0)} mm, spacing ≈ ${info.fastening.pitchMm.toFixed(0)} mm) — one 25–32 mm binder clip per station, flat land against the rail. Station coordinates ship in \`project.json → fastening.stations\`.`
+    : '- 6–10 binder clips sized to the 5 mm seam rail stack; removable seam/base sealant'}
+- Removable seam/base sealant${info.fastening?.warning ? `\n- ⚠ ${info.fastening.warning}` : ''}
 
 ## Material & print profiles
 ${materialNote}

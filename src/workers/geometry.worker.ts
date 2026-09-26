@@ -284,6 +284,14 @@ async function generate(params: GenerateParams): Promise<void> {
     gatesPass: gateReport.pass,
     ports: { crown: null, vents: pkg.ports.vents.length },
     clearanceBand: gateReport.clearanceBand,
+    fastening: {
+      mode: 'binder',
+      clipCount: pkg.clampPlan.stations.length,
+      usableRailMm: pkg.clampPlan.usableRailMm,
+      pitchMm: pkg.clampPlan.pitchMm,
+      stations: pkg.clampPlan.stations,
+      ...(pkg.clampPlan.warning ? { warning: pkg.clampPlan.warning } : {}),
+    },
     printability: analyzePieces({
       mod: m, masterBase: masterBaseArr,
       jackets: is3
@@ -329,6 +337,7 @@ async function exportPackage(): Promise<void> {
       checks: r.checks,
       crown: r.ports.crown,
       ventCount: r.ports.vents,
+      fastening: r.fastening,
     },
   });
   const blob = zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.byteLength) as ArrayBuffer;

@@ -206,6 +206,7 @@ for (const [name, r] of Object.entries(printability)) {
   console.log(`  ${name}: bed ${r.bedAreaMm2} mm² · unsupported @45° ${r.overhangAreaMm2} mm²` +
     (r.worstBands.length ? ` · worst ${r.worstBands[0].areaMm2} mm² @ ${r.worstBands[0].zLo}–${r.worstBands[0].zHi} mm` : ''));
 }
+console.log(`${el()} clip plan: ${pkg.clampPlan.stations.length} stations (usable rail ${pkg.clampPlan.usableRailMm} mm, pitch ${pkg.clampPlan.pitchMm} mm)${pkg.clampPlan.warning ? ` — ${pkg.clampPlan.warning}` : ''}`);
 
 // --- package ---
 const bbOf = (m: MeshArrays) => {
@@ -240,6 +241,14 @@ try {
       checks: gates.checks,
       crown: null,
       ventCount: pkg.ports.vents.length,
+      fastening: {
+        mode: 'binder',
+        clipCount: pkg.clampPlan.stations.length,
+        usableRailMm: pkg.clampPlan.usableRailMm,
+        pitchMm: pkg.clampPlan.pitchMm,
+        stations: pkg.clampPlan.stations,
+        ...(pkg.clampPlan.warning ? { warning: pkg.clampPlan.warning } : {}),
+      },
       clearanceBand: gates.clearanceBand,
       printability,
     },

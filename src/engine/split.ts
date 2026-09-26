@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import { trappedColumnMask } from './analyze';
+import { planClampStations, type ClampPlan, type RibExclusion } from './clamps';
 import { type Loops } from './contours';
 import { buildEnvelope } from './envelope';
 import { instanceToMeshArrays } from './offset';
@@ -238,6 +239,7 @@ export interface AxisAttempt {
   jacketDim: [number, number, number];
   plateDim: [number, number, number];
   ports: PortsPlan;
+  clampPlan: ClampPlan;  // clip stations on the frozen seam rail (always computed — binder guidance too)
   siliconeMl: number;
   cavityLoops: Loops;    // cavity prism outline, vert-frame (u3, v3) coords — fill-gate seed region
   cavitySections: { height: number; loops: Loops }[];
@@ -545,6 +547,26 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
       }
     }
 
+    // V0.5: deterministic clamp stations along the frozen seam rail — always
+    // computed. In binder mode this is the assembly guidance; the printed
+    // ZeroClip (commit 2) lands on the same stations.
+    progress('Planning clamp stations', 0.72);
+    let ribExcl: RibExclusion | null = null;
+    if (params.ribs) {
+      const mb = bboxOfArrays(master);
+      const u3r = (v + 1) % 3, v3r = (v + 2) % 3;
+      ribExcl = {
+        center: [mb.min[u3r] + mb.dim[u3r] / 2, mb.min[v3r] + mb.dim[v3r] / 2],
+        u3: u3r, v3: v3r, wall,
+      };
+    }
+    const clampPlan = planClampStations({
+      railSection, axis, frame,
+      ribs: ribExcl,
+      vents: deps.ports ? ports.vents : [],
+    });
+    if (clampPlan.warning) warnings.push(clampPlan.warning);
+
     progress('Building the glove and simulating extraction', 0.75);
     const skin = track(cavitySolid!.subtract(masterMan));
     if (!isOk(skin)) throw new Error('kernel rejected the silicone glove');
@@ -628,6 +650,7 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
       jacketDim,
       plateDim,
       ports,
+      clampPlan,
       siliconeMl,
       cavityLoops,
       cavitySections: envelope.sections,
@@ -724,6 +747,7 @@ export interface MoldPackage {
   jacketDim: [number, number, number];
   plateDim: [number, number, number];
   ports: PortsPlan;
+  clampPlan: ClampPlan;
   siliconeMl: number;
   cavityLoops: Loops;
   cavitySections: { height: number; loops: Loops }[];

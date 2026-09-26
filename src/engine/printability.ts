@@ -19,6 +19,28 @@ export const ISLAND = {
   hardMm2: 15,     // from: hard-fail candidate (gate flip pending corpus-clean)
 };
 
+// Bed-stability ladder (grilled 2026-09-26): slenderness = height / √bedArea.
+// Brim recommendation only — never modifies geometry, never gates.
+export const BRIM = {
+  low: 1.5,        // below: no brim needed (with a real footprint)
+  medium: 2.0,     // below: 3 mm brim
+  high: 2.5,       // below: 5 mm brim; at/above: 8 mm brim + HIGH risk label
+  minBedMm2: 2000, // small footprints always get at least a 3 mm brim
+};
+
+export function recommendBrim(slenderness: number, bedAreaMm2: number): number {
+  if (slenderness < BRIM.low) return bedAreaMm2 >= BRIM.minBedMm2 ? 0 : 3;
+  if (slenderness < BRIM.medium) return 3;
+  if (slenderness < BRIM.high) return 5;
+  return 8;
+}
+
+export function bedRiskOf(slenderness: number): 'LOW' | 'MEDIUM' | 'HIGH' {
+  if (slenderness < BRIM.low) return 'LOW';
+  if (slenderness < BRIM.high) return 'MEDIUM';
+  return 'HIGH';
+}
+
 export interface PrintabilityBand { zLo: number; zHi: number; areaMm2: number }
 export interface PrintabilityIsland { z: number; areaMm2: number }
 export interface PrintabilityReport {
@@ -29,6 +51,10 @@ export interface PrintabilityReport {
   worstBands: PrintabilityBand[];  // merged height bands with the most overhang
   unsupportedIslands: PrintabilityIsland[]; // islands ≥ warnMm2, largest first (≤20)
   islandRisk: 'LOW' | 'MEDIUM' | 'HIGH';    // HIGH = hard-fail candidate present
+  heightMm: number;            // print-height of the part in its orientation
+  slenderness: number;         // height / √bedArea
+  brimMm: 0 | 3 | 5 | 8;       // recommended brim (print-profile metadata only)
+  bedRisk: 'LOW' | 'MEDIUM' | 'HIGH';       // tipping/topple indicator, warning-tier
 }
 
 const UNIT: Record<Axis, [number, number, number]> = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] };
@@ -145,6 +171,9 @@ export function analyzePrintability(deps: {
   bands.sort((a, b) => b.areaMm2 - a.areaMm2);
   islands.sort((a, b) => b.areaMm2 - a.areaMm2);
 
+  const heightMm = crown - base;
+  const slenderness = bedAreaMm2 > 1 ? heightMm / Math.sqrt(bedAreaMm2) : 99;
+
   return {
     bedAreaMm2: Number(bedAreaMm2.toFixed(0)),
     overhangAreaMm2: Number(overhangAreaMm2.toFixed(0)),
@@ -153,5 +182,9 @@ export function analyzePrintability(deps: {
     worstBands: bands.slice(0, 3).map((b) => ({ zLo: Number(b.zLo.toFixed(1)), zHi: Number(b.zHi.toFixed(1)), areaMm2: Number(b.areaMm2.toFixed(0)) })),
     unsupportedIslands: islands.slice(0, 20).map((i) => ({ z: Number(i.z.toFixed(1)), areaMm2: Number(i.areaMm2.toFixed(1)) })),
     islandRisk: islandHard ? 'HIGH' : islands.length > 0 ? 'MEDIUM' : 'LOW',
+    heightMm: Number(heightMm.toFixed(1)),
+    slenderness: Number(slenderness.toFixed(2)),
+    brimMm: recommendBrim(slenderness, bedAreaMm2) as 0 | 3 | 5 | 8,
+    bedRisk: bedRiskOf(slenderness),
   };
 }

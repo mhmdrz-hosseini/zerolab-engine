@@ -180,10 +180,19 @@ ${partMeta.map((p) => `- **${p.name}** — \`${p.file}\` (${p.triangles.toLocale
 ${info.printability ? `## Support forecast (coarse 45° layer analysis)\n${Object.entries(info.printability).map(([name, r]) => {
   const islands = r.unsupportedIslands?.length ?? 0;
   const risk = r.islandRisk === 'HIGH' ? ' — ⚠ unsupported island > 15 mm² (hard-fail candidate)' : islands ? ` — ${islands} unsupported island(s) ≥ 4 mm²` : '';
-  return `- **${name}**: bed contact ≈ ${r.bedAreaMm2} mm² · unsupported growth ≈ ${r.overhangAreaMm2} mm²${r.worstBands.length ? ` — paint supports around the ${r.worstBands.slice(0, 2).map((b) => `${b.areaMm2} mm² band at z ${b.zLo}–${b.zHi}`).join(' and ')}` : ''}${risk}`;
+  const brim = r.brimMm ? ` · brim ${r.brimMm} mm (${r.bedRisk.toLowerCase()} bed risk, slenderness ${r.slenderness})` : ' · no brim needed';
+  return `- **${name}**: bed contact ≈ ${r.bedAreaMm2} mm² · unsupported growth ≈ ${r.overhangAreaMm2} mm²${r.worstBands.length ? ` — paint supports around the ${r.worstBands.slice(0, 2).map((b) => `${b.areaMm2} mm² band at z ${b.zLo}–${b.zHi}`).join(' and ')}` : ''}${risk}${brim}`;
 }).join('\n')}\n` : ''}
 ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).join('\n')}` : ''}
 `;
+
+  const brimFor = (part: string): string => {
+    const r = info.printability?.[part];
+    if (!r) return 'optional';
+    return r.brimMm
+      ? `${r.brimMm} mm recommended (bed risk ${r.bedRisk.toLowerCase()}, slenderness ${r.slenderness})`
+      : 'none needed (bed risk low)';
+  };
 
   const printProfile = {
     format: 'matrix-mold-print-profiles/0.3',
@@ -204,8 +213,10 @@ ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).
         infill_pattern: 'gyroid',
         top_bottom_solid_layers: 5,
         support: 'organic/tree where needed, support interface enabled',
+        support_interface_layers: 3,
         seam: 'rear / least-visible surface — RTV silicone reproduces layer lines and seam scars',
         elephant_foot_compensation_mm: 0.2,
+        warning: 'Silicone reproduces support-contact scars.',
         post_process: 'sand/fill if a smooth cast surface is wanted → seal (e.g. Smooth-On print coating) → release agent → pour silicone',
       },
       jacket_A: {
@@ -217,7 +228,7 @@ ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).
         infill_percent: [10, 15],
         infill_pattern: 'gyroid',
         support: '~55° threshold, painted where necessary',
-        brim: 'optional',
+        brim: brimFor('jacket_A'),
         seam: 'rear / away from the mating rail',
         elephant_foot_compensation_mm: 0.2,
       },
@@ -229,8 +240,8 @@ ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).
         perimeters: '3 (4 for heavy reuse)',
         infill_percent: [10, 15],
         infill_pattern: 'gyroid',
-        support: '~55° threshold, painted where necessary — B typically needs more support than A',
-        brim: '5 mm recommended',
+        support: '~55° threshold, painted where necessary',
+        brim: brimFor('jacket_B'),
         seam: 'rear / away from the mating rail',
         elephant_foot_compensation_mm: 0.2,
       },

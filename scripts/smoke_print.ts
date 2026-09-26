@@ -78,10 +78,15 @@ for (const model of CORPUS) {
   for (const [part, r] of Object.entries(report1)) {
     check(`${model.name}/${part}: fields present`,
       Number.isFinite(r.bedAreaMm2) && Number.isFinite(r.overhangAreaMm2)
-        && Array.isArray(r.unsupportedIslands) && ['LOW', 'MEDIUM', 'HIGH'].includes(r.islandRisk),
-      `bed ${r.bedAreaMm2} · overhang ${r.overhangAreaMm2} mm² · islands ${r.unsupportedIslands.length} (${r.islandRisk})`);
+        && Array.isArray(r.unsupportedIslands) && ['LOW', 'MEDIUM', 'HIGH'].includes(r.islandRisk)
+        && Number.isFinite(r.slenderness) && [0, 3, 5, 8].includes(r.brimMm) && ['LOW', 'MEDIUM', 'HIGH'].includes(r.bedRisk),
+      `bed ${r.bedAreaMm2} · overhang ${r.overhangAreaMm2} mm² · islands ${r.unsupportedIslands.length} (${r.islandRisk}) · brim ${r.brimMm} (${r.bedRisk})`);
     check(`${model.name}/${part}: deterministic`, JSON.stringify(r) === JSON.stringify(report2[part]), 'two runs identical');
     check(`${model.name}/${part}: island areas ≥ warn threshold`, r.unsupportedIslands.every((i) => i.areaMm2 >= 4), `${r.unsupportedIslands.length} islands`);
+    check(`${model.name}/${part}: slenderness ↔ brim ladder consistent`,
+      (r.slenderness < 2.0 ? r.brimMm <= 3 : r.slenderness < 2.5 ? r.brimMm <= 5 : r.brimMm === 8)
+        && (r.bedRisk === 'HIGH') === (r.slenderness >= 2.5),
+      `slender ${r.slenderness} → brim ${r.brimMm}, risk ${r.bedRisk}`);
   }
 }
 

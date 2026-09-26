@@ -46,21 +46,22 @@ Audit §4/§5/§10: requested 8 mm behaves as min 7.40 / P10 8.06 / **P50 10.03*
 - **Acceptance status:** Sheep + Spiderman CLI PASS, extraction PASS, comparator aperture holds. The audit's full band (P50 ≤ 8.5 at gap 8) is NOT reachable by window tuning alone — see P3b.
 - **P3b (roadmap):** directional/adaptive window — union pull-direction clearance asymmetrically and keep the hug tight perpendicular to the pull; attack the ratchet's vertical fattening over steeply narrowing features. This is the path to the audit's full target bands.
 
-### P4 — Wall architecture presets (additive; default unchanged until coupon trial)
+### P4 — Wall architecture presets (additive; default unchanged until coupon trial) — SHIPPED 2026-09-26
 
-Audit §3/§1/§2: hydrostatic pressure is ~0.25 psi — wall stiffness serves handling/clamping/reuse, not liquid pressure. Graded wall beats uniform thickness on stiffness/material ratio.
+Audit §3/§1/§2: hydrostatic pressure is ~0.25 psi — wall stiffness serves handling/clamping/reuse, not liquid pressure.
 
-- New preset set (body / seam rail / base rim): Economy 3.2/5 · Standard 4.0/5–6 · Heavy 5.0/6–8 — implemented in `split.ts` + worker params. **Current uniform 5 mm remains the shipped default** (invariant 12) until the physical coupon trial.
-- External ribs (~2 mm thick, 8–12 mm deep) as local stiffeners instead of global thickness — new `ribs` stage after jacket boolean, opt-in flag, `generate_mold.ts --ribs`.
-- Acceptance: per-preset jacket mass reported in project.json; extraction PASS on all presets.
+- Wall preset chips: **Light 4 mm (audit-recommended) / Standard 5 mm (V0.3 default) / Heavy 6.5 mm**. The seam rails (wall + 7 mm external flange) and seating rim were already reinforced by construction, so the chip sizes the body shell.
+- **External ribs shipped** (`--ribs` / UI toggle): four vertical 8 mm fins at the quarter positions between the seam rails, lofted from the envelope's own radial rings (exact surface radius per angle), adaptive 0.5 mm cavity-safe fuse (three-ray max per ring — a flat slab spans tangential radius variation), cavity-intrusion guarded. Measured +4.6 cm³ per jacket on Spiderman; extraction unchanged.
+- Jacket volumes now reported in the package parts meta.
+- Acceptance: spiderman ribs+hotWax PASS, sheep light-wall+ribs PASS, all regressions green.
 
-### P5 — Material intelligence & release confidence (advisory layer, no geometry)
+### P5 — Material intelligence & release confidence (advisory layer, no geometry) — SHIPPED 2026-09-26
 
-Audit §6/§19: PLA is right for making the mold (room-temp RTV pour) but wrong as universal jacket material when hot wax stays jacketed (wax pours 57–79 °C vs PLA HDT ~55 °C). And the 11.1% trapped-ray warning must surface as a verdict, not a log line.
+Audit §6/§19: PLA is right for making the mold (room-temp RTV pour) but wrong as universal jacket material when hot wax stays jacketed (wax pours 57–79 °C vs PLA HDT ~55 °C). And the trapped-ray warning must surface as a verdict, not a log line.
 
-- Material guidance in `assembly.md` + UI: "Silicone-making only → PLA" / "Hot-wax with jacket on → PETG/ASA/HT". Selector feeds `project.json`.
-- Release-confidence verdict in `AnalysisPanel.tsx` (LOW/MEDIUM/HIGH from trapped-ray %) with the recommended action.
-- 3-piece jackets: this is exactly the already-planned **P7 multi-panel** work (fold-sheet concave cases) — the audit's "Generate 3-piece jacket" button becomes P7's UI entry point. No duplicate design.
+- Casting-material chips (Silicone → PLA ok / Hot wax → PETG/ASA) flow into `project.json` (`castingMaterial`), `print_profile.json` (`material.choice`), and a dedicated `assembly.md` guidance line.
+- Release-confidence verdict (HIGH ≤ 5% / MEDIUM ≤ 12% / LOW trapped-ray share of the chosen axis) in the UI result box with a test-print recommendation and the multi-panel pointer.
+- 3-piece jackets remain **P7 multi-panel** work — the audit's "Generate 3-piece jacket" action is P7's UI entry point.
 
 ### P6 — Print profiles ship with the package
 

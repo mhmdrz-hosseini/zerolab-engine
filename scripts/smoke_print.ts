@@ -61,26 +61,26 @@ for (const model of CORPUS) {
   fused.delete(); pm.delete(); mm.delete();
 
   const is3 = !!(pkg.pieces.jacketB1 && pkg.pieces.jacketB2);
+  const jacketsArg = is3
+    ? [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B1', mesh: pkg.pieces.jacketB1! }, { name: 'jacket_B2', mesh: pkg.pieces.jacketB2! }]
+    : [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B', mesh: pkg.pieces.jacketB! }];
   const report1 = analyzePieces({
-    mod, masterBase,
-    jackets: is3
-      ? [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B1', mesh: pkg.pieces.jacketB1! }, { name: 'jacket_B2', mesh: pkg.pieces.jacketB2! }]
-      : [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B', mesh: pkg.pieces.jacketB! }],
+    mod, masterBase, jackets: jacketsArg,
     vert: pkg.frame.vert, base: pkg.frame.base, crown: pkg.frame.crown, plateT: V02.plateT,
+    pull: pkg.axis, mid: pkg.frame.mid,
   });
   const report2 = analyzePieces({
-    mod, masterBase,
-    jackets: is3
-      ? [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B1', mesh: pkg.pieces.jacketB1! }, { name: 'jacket_B2', mesh: pkg.pieces.jacketB2! }]
-      : [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B', mesh: pkg.pieces.jacketB! }],
+    mod, masterBase, jackets: jacketsArg,
     vert: pkg.frame.vert, base: pkg.frame.base, crown: pkg.frame.crown, plateT: V02.plateT,
+    pull: pkg.axis, mid: pkg.frame.mid,
   });
   for (const [part, r] of Object.entries(report1)) {
     check(`${model.name}/${part}: fields present`,
       Number.isFinite(r.bedAreaMm2) && Number.isFinite(r.overhangAreaMm2)
         && Array.isArray(r.unsupportedIslands) && ['LOW', 'MEDIUM', 'HIGH'].includes(r.islandRisk)
-        && Number.isFinite(r.slenderness) && [0, 3, 5, 8].includes(r.brimMm) && ['LOW', 'MEDIUM', 'HIGH'].includes(r.bedRisk),
-      `bed ${r.bedAreaMm2} · overhang ${r.overhangAreaMm2} mm² · islands ${r.unsupportedIslands.length} (${r.islandRisk}) · brim ${r.brimMm} (${r.bedRisk})`);
+        && Number.isFinite(r.slenderness) && [0, 3, 5, 8].includes(r.brimMm) && ['LOW', 'MEDIUM', 'HIGH'].includes(r.bedRisk)
+        && Number.isFinite(r.precisionOverhangMm2) && ['CLEAR', 'WARN'].includes(r.precisionRisk),
+      `bed ${r.bedAreaMm2} · overhang ${r.overhangAreaMm2} mm² · islands ${r.unsupportedIslands.length} (${r.islandRisk}) · brim ${r.brimMm} (${r.bedRisk}) · precision ${r.precisionOverhangMm2} mm² (${r.precisionRisk})`);
     check(`${model.name}/${part}: deterministic`, JSON.stringify(r) === JSON.stringify(report2[part]), 'two runs identical');
     check(`${model.name}/${part}: island areas ≥ warn threshold`, r.unsupportedIslands.every((i) => i.areaMm2 >= 4), `${r.unsupportedIslands.length} islands`);
     check(`${model.name}/${part}: slenderness ↔ brim ladder consistent`,

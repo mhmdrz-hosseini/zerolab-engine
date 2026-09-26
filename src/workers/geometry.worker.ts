@@ -303,7 +303,7 @@ async function generate(params: GenerateParams): Promise<void> {
         ? [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B1', mesh: pkg.pieces.jacketB1! }, { name: 'jacket_B2', mesh: pkg.pieces.jacketB2! }]
         : [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B', mesh: pkg.pieces.jacketB }],
       vert: pkg.frame.vert, base: pkg.frame.base, crown: pkg.frame.crown,
-      plateT: V02.plateT,
+      plateT: V02.plateT, pull: pkg.axis, mid: pkg.frame.mid,
     }),
   };
   state.lastResult = result;

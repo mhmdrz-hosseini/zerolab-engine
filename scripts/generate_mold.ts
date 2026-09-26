@@ -204,10 +204,12 @@ const printability = analyzePieces({
     ? [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B1', mesh: pkg.pieces.jacketB1! }, { name: 'jacket_B2', mesh: pkg.pieces.jacketB2! }]
     : [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B', mesh: pkg.pieces.jacketB! }],
   vert: pkg.frame.vert, base: pkg.frame.base, crown: pkg.frame.crown, plateT: V02.plateT,
+  pull: pkg.axis, mid: pkg.frame.mid,
 });
 for (const [name, r] of Object.entries(printability)) {
   console.log(`  ${name}: bed ${r.bedAreaMm2} mm² · unsupported @45° ${r.overhangAreaMm2} mm²` +
-    (r.worstBands.length ? ` · worst ${r.worstBands[0].areaMm2} mm² @ ${r.worstBands[0].zLo}–${r.worstBands[0].zHi} mm` : ''));
+    (r.worstBands.length ? ` · worst ${r.worstBands[0].areaMm2} mm² @ ${r.worstBands[0].zLo}–${r.worstBands[0].zHi} mm` : '') +
+    (r.precisionRisk === 'WARN' ? ` · ⚠ precision-band overhang ${r.precisionOverhangMm2} mm²` : ''));
 }
 console.log(`${el()} clip plan: ${pkg.clampPlan.stations.length} stations (usable rail ${pkg.clampPlan.usableRailMm} mm, pitch ${pkg.clampPlan.pitchMm} mm, mode ${pkg.clampPlan.mode})${pkg.zeroClip ? ' · ZeroClip geometry built' : ''}${pkg.clampPlan.warning ? ` — ${pkg.clampPlan.warning}` : ''}`);
 

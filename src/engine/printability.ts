@@ -11,7 +11,7 @@
 // islands < 4 mm² are slicer-bridgeable (ignored), 4–15 mm² warn, > 15 mm²
 // are hard-fail CANDIDATES (the gate flip lands after the corpus runs clean).
 import type { ManifoldMod } from './manifoldLoader';
-import type { Axis, MeshArrays } from './types';
+import { AXES, type Axis, type MeshArrays } from './types';
 
 export const ISLAND = {
   ignoreMm2: 4,    // below: slicer bridges it — never reported
@@ -55,7 +55,17 @@ export interface PrintabilityReport {
   slenderness: number;         // height / √bedArea
   brimMm: 0 | 3 | 5 | 8;       // recommended brim (print-profile metadata only)
   bedRisk: 'LOW' | 'MEDIUM' | 'HIGH';       // tipping/topple indicator, warning-tier
+  precisionOverhangMm2: number; // unsupported growth inside the rail/tongue band
+  precisionRisk: 'CLEAR' | 'WARN';          // WARN = support likely on a precision surface
 }
+
+// The precision band: rail + tongue/groove live within ±2.5 mm of the parting
+// plane (split.ts rail prism span). In a layer cross-section this is a straight
+// strip along the pull coordinate. The rim seat is NOT in this check — for
+// rim-down prints it IS the bed face (elephant-foot territory, handled in the
+// print profile), which is why bed contact on it is guidance, not rejection.
+const PRECISION_HALF_WIDTH = 2.5;
+const PRECISION_WARN_MM2 = 4;
 
 const UNIT: Record<Axis, [number, number, number]> = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] };
 
@@ -63,12 +73,14 @@ interface CS {
   area(): number;
   offset(c: number, join?: string, m?: number, seg?: number): CS;
   subtract(o: CS): CS;
+  intersect(o: CS): CS;
   decompose(): CS[];
   delete(): void;
 }
 
 /** Analyze the standard export set: master_base (plate-down) + each jacket
- *  piece (rim-down). Shared by the worker and the CLI. */
+ *  piece (rim-down). Shared by the worker and the CLI. The precision-band
+ *  check runs only when pull+mid are provided (jacket parts). */
 export function analyzePieces(deps: {
   mod: ManifoldMod;
   masterBase: MeshArrays;
@@ -77,6 +89,8 @@ export function analyzePieces(deps: {
   base: number;    // plate top (= jacket bed face)
   crown: number;
   plateT: number;  // master_base's bed face sits plateT below `base`
+  pull?: Axis;     // parting normal — enables the precision-band check
+  mid?: number;    // parting-plane position along the pull axis
 }): Record<string, PrintabilityReport> {
   const out: Record<string, PrintabilityReport> = {
     master_base: analyzePrintability({
@@ -87,6 +101,7 @@ export function analyzePieces(deps: {
   for (const j of deps.jackets) {
     out[j.name] = analyzePrintability({
       mod: deps.mod, mesh: j.mesh, vert: deps.vert, base: deps.base, crown: deps.crown,
+      pull: deps.pull, mid: deps.mid,
     });
   }
   return out;
@@ -100,6 +115,8 @@ export function analyzePrintability(deps: {
   crown: number;       // vert-axis coord of the top
   layerStep?: number;  // analysis layer height (default ≈ 0.8 mm, coarse)
   slope?: number;      // tan of the support threshold (default 1.0 = 45°)
+  pull?: Axis;         // parting normal — enables the precision-band check
+  mid?: number;        // parting-plane position along pull
 }): PrintabilityReport {
   const { mod, mesh, vert, base, crown } = deps;
   const layerStep = deps.layerStep ?? Math.max(0.6, (crown - base) / 250);
@@ -110,6 +127,19 @@ export function analyzePrintability(deps: {
   if (v === 1) rot = man.rotate(90, 0, 0).rotate(0, 0, 90);
   if (v === 0) rot = man.rotate(0, -90, 0).rotate(0, 0, -90);
   const slicer = rot as unknown as { slice(height: number): CS };
+
+  // precision strip (rail/tongue band) in the layer plane, when enabled
+  let strip: CS | null = null;
+  if (deps.pull && deps.mid !== undefined) {
+    const u3 = (v + 1) % 3;
+    const pullCoordIdx = AXES.indexOf(deps.pull) === u3 ? 0 : 1;
+    const csCtor = mod.CrossSection as unknown as { ofPolygons(poly: number[][][], fillRule?: string): CS };
+    const BIG = 1e5;
+    const rect: number[][] = pullCoordIdx === 0
+      ? [[deps.mid - PRECISION_HALF_WIDTH, -BIG], [deps.mid + PRECISION_HALF_WIDTH, -BIG], [deps.mid + PRECISION_HALF_WIDTH, BIG], [deps.mid - PRECISION_HALF_WIDTH, BIG]]
+      : [[-BIG, deps.mid - PRECISION_HALF_WIDTH], [BIG, deps.mid - PRECISION_HALF_WIDTH], [BIG, deps.mid + PRECISION_HALF_WIDTH], [-BIG, deps.mid + PRECISION_HALF_WIDTH]];
+    strip = csCtor.ofPolygons([rect], 'EvenOdd');
+  }
 
   const sliceCS = (z: number): CS | null => {
     const s = slicer.slice(z);
@@ -126,6 +156,7 @@ export function analyzePrintability(deps: {
   const perLayer: { z: number; area: number }[] = [];
   const islands: PrintabilityIsland[] = [];
   let islandHard = false;
+  let precisionTotal = 0;
   for (let z = base + layerStep; z <= crown + 1e-9; z += layerStep) {
     const cur = sliceCS(z);
     if (!cur) continue;
@@ -146,12 +177,19 @@ export function analyzePrintability(deps: {
           }
         }
       }
+      // precision band: unsupported growth inside the rail/tongue strip
+      if (strip && diffArea >= PRECISION_WARN_MM2) {
+        const prec = diff.intersect(strip);
+        precisionTotal += prec.area();
+        prec.delete();
+      }
       diff.delete();
       dilated.delete();
       below.delete();
     }
     cur.delete();
   }
+  strip?.delete();
   try { rot.delete(); } catch { /* shared with man when vert === Z */ }
   try { man.delete(); } catch { /* freed above */ }
 
@@ -186,5 +224,7 @@ export function analyzePrintability(deps: {
     slenderness: Number(slenderness.toFixed(2)),
     brimMm: recommendBrim(slenderness, bedAreaMm2) as 0 | 3 | 5 | 8,
     bedRisk: bedRiskOf(slenderness),
+    precisionOverhangMm2: Number(precisionTotal.toFixed(1)),
+    precisionRisk: precisionTotal >= PRECISION_WARN_MM2 ? 'WARN' : 'CLEAR',
   };
 }

@@ -128,7 +128,30 @@ function collapseSlivers(vp: Float32Array, tv: Uint32Array, maxDist = 0.1): { vp
         const d2 = dx * dx + dy * dy + dz * dz;
         if (d2 <= bestD2) { bestD2 = d2; best = [p, q]; }
       }
-      if (!best) continue; // long sliver — reported via audit, never move real geometry
+      if (!best) {
+        // Long exact-collinear seam (kernel boolean T-junction cap — e.g. three
+        // points 0.2/0.2 mm apart on a straight edge): the middle vertex lies
+        // ON the longest edge, so welding it to the nearest endpoint removes
+        // the fin without bending any neighboring face. Bounded at 1 mm —
+        // beyond that it is a reported defect, never silently moved.
+        const len2Of = (p: number, q: number): number => {
+          const dx = vp[p * 3] - vp[q * 3], dy = vp[p * 3 + 1] - vp[q * 3 + 1], dz = vp[p * 3 + 2] - vp[q * 3 + 2];
+          return dx * dx + dy * dy + dz * dz;
+        };
+        const pairs: [number, number][] = [[a, b], [b, c], [a, c]];
+        let longPair = pairs[0], longLen = -1;
+        for (const pr of pairs) {
+          const L = len2Of(pr[0], pr[1]);
+          if (L > longLen) { longLen = L; longPair = pr; }
+        }
+        if (longLen > 1.0) continue; // genuinely long sliver — reported via audit, never moved
+        const [pEnd, qEnd] = longPair;
+        const mid = a !== pEnd && a !== qEnd ? a : b !== pEnd && b !== qEnd ? b : c;
+        const target = len2Of(mid, pEnd) <= len2Of(mid, qEnd) ? pEnd : qEnd;
+        for (let i = 0; i < n; i++) if (remap[i] === mid) remap[i] = target;
+        changed = true;
+        continue;
+      }
       const [p, q] = best[0] < best[1] ? best : [best[1], best[0]];
       for (let i = 0; i < n; i++) if (remap[i] === q) remap[i] = p;
       changed = true;

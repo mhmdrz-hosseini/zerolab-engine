@@ -47,6 +47,7 @@ const SIZE = arg('size') ? Number(arg('size')) : undefined;
 const GAP_WINDOW = arg('gap-window') ? Number(arg('gap-window')) : undefined;
 const RIBS = has('ribs');
 const MATERIAL = (arg('material') as 'silicone' | 'hotWax' | undefined) ?? undefined;
+const PANELS = Number(arg('panels') ?? 2) === 3 ? 3 as const : 2 as const;
 const VERTICAL = arg('vertical') as Axis | undefined;
 const SPLIT = arg('split') as Axis | undefined;
 const NO_ZIP = has('no-zip');
@@ -144,7 +145,7 @@ console.log(`${el()} ranked axes: ${rankedAxes.join(' → ')}`);
 // --- generate ---
 const pkg = await generateMoldPackage({
   mod, master: full, grid,
-  params: { gap: GAP, wall: WALL, clearance: CLEARANCE, verticalAxis: VERTICAL, splitAxis: SPLIT, gapWindow: GAP_WINDOW, ribs: RIBS, material: MATERIAL },
+  params: { gap: GAP, wall: WALL, clearance: CLEARANCE, verticalAxis: VERTICAL, splitAxis: SPLIT, gapWindow: GAP_WINDOW, ribs: RIBS, material: MATERIAL, panels: PANELS },
   rankedAxes, ports: false,
   onProgress: (stage) => console.log(`${el()} ${stage}`),
 });
@@ -161,7 +162,9 @@ const gates = runGates({
   frame: pkg.frame,
   ports: pkg.ports,
   master: full,
-  pieceArrays: [pkg.pieces.jacketA, pkg.pieces.jacketB, pkg.pieces.basePlate],
+  pieceArrays: (pkg.pieces.jacketB1 && pkg.pieces.jacketB2)
+    ? [pkg.pieces.jacketA, pkg.pieces.jacketB1, pkg.pieces.jacketB2, pkg.pieces.basePlate]
+    : [pkg.pieces.jacketA, pkg.pieces.jacketB, pkg.pieces.basePlate],
   siliconeMl: pkg.siliconeMl,
   cavityLoops: pkg.cavityLoops, cavitySections: pkg.cavitySections,
   gapWindow: GAP_WINDOW,
@@ -206,10 +209,14 @@ try {
     info: {
       name: input.split(/[\\/]/).pop()!.replace(/\.[^.]+$/, ''),
       createdAt: new Date().toISOString(),
-      params: { gap: GAP, wall: WALL, clearance: CLEARANCE, gapWindow: GAP_WINDOW, ribs: RIBS, material: MATERIAL },
+      params: { gap: GAP, wall: WALL, clearance: CLEARANCE, gapWindow: GAP_WINDOW, ribs: RIBS, material: MATERIAL, panels: PANELS },
       axis: pkg.axis,
       siliconeMl: pkg.siliconeMl,
-      extraction: { A: pkg.extraction.A.freeAtMm, B: pkg.extraction.B.freeAtMm },
+      extraction: {
+        A: pkg.extraction.A.freeAtMm,
+        B: pkg.extraction.B?.freeAtMm ?? 0,
+        ...(pkg.pieces.jacketB1 ? { B1: pkg.extraction.B1?.freeAtMm ?? 0, B2: pkg.extraction.B2?.freeAtMm ?? 0 } : {}),
+      },
       jacketDim: [...pkg.jacketDim],
       plateDim: [...bbOf(pkg.pieces.basePlate)],
       warnings: [...gates.warnings, ...pkg.warnings, ...warnings, ...report.warnings],
@@ -235,4 +242,4 @@ if (!NO_ZIP) {
 }
 console.log(`${el()} package written to ${OUT_DIR}/ ${NO_ZIP ? '' : `(+ ${fileName})`}`);
 console.log(`frame: vert ${pkg.frame.vert}, pull ±${pkg.frame.pull}, base ${pkg.frame.base.toFixed(1)}, mid ${pkg.frame.mid.toFixed(1)}, crown ${pkg.frame.crown.toFixed(1)}`);
-console.log(`jacket ${pkg.jacketDim.map((d) => d.toFixed(1)).join(' × ')} mm · silicone ${pkg.siliconeMl.toFixed(0)} mL · extraction A ${pkg.extraction.A.freeAtMm} / B ${pkg.extraction.B.freeAtMm} mm`);
+console.log(`jacket ${pkg.jacketDim.map((d) => d.toFixed(1)).join(' × ')} mm · silicone ${pkg.siliconeMl.toFixed(0)} mL · extraction A ${pkg.extraction.A.freeAtMm} / B ${pkg.extraction.B?.freeAtMm ?? `${pkg.extraction.B1?.freeAtMm}/${pkg.extraction.B2?.freeAtMm} (B1/B2)`} mm`);

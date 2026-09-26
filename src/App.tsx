@@ -49,6 +49,8 @@ export default function App() {
   if (result && layers.skin) layerDefs.push({ mesh: result.parts.siliconeSkin, color: '#4fc3a1', opacity: 0.45, order: 3 });
   if (result && layers.jacketA) layerDefs.push({ mesh: result.parts.jacketA, color: '#7d9dc4', opacity: 0.4, order: 4 });
   if (result && layers.jacketB) layerDefs.push({ mesh: result.parts.jacketB, color: '#c47d9d', opacity: 0.4, order: 4 });
+  if (result && layers.jacketB1) layerDefs.push({ mesh: result.parts.jacketB1, color: '#7dc4a8', opacity: 0.4, order: 4 });
+  if (result && layers.jacketB2) layerDefs.push({ mesh: result.parts.jacketB2, color: '#c4b07d', opacity: 0.4, order: 4 });
   if (result && layers.plate) layerDefs.push({ mesh: result.parts.basePlate, color: '#b3a184', opacity: 0.85, order: 1 });
   if (result && layers.outer) layerDefs.push({ mesh: result.parts.jacketOuter, color: '#8a97a5', opacity: 0.12, order: 0 });
 

@@ -224,12 +224,15 @@ async function generate(params: GenerateParams): Promise<void> {
   }
 
   post({ type: 'progress', stage: 'Running validation gates', pct: 0.96 });
+  const is3 = !!pkg.pieces.jacketB1 && !!pkg.pieces.jacketB2;
   const gateReport = runGates({
     grid, gap, wall, step: grid.step,
     frame: pkg.frame,
     ports: pkg.ports,
     master: state.master,
-    pieceArrays: [pkg.pieces.jacketA, pkg.pieces.jacketB, pkg.pieces.basePlate],
+    pieceArrays: is3
+      ? [pkg.pieces.jacketA, pkg.pieces.jacketB1!, pkg.pieces.jacketB2!, pkg.pieces.basePlate]
+      : [pkg.pieces.jacketA, pkg.pieces.jacketB, pkg.pieces.basePlate],
     siliconeMl: pkg.siliconeMl,
     cavityLoops: pkg.cavityLoops, cavitySections: pkg.cavitySections,
     gapWindow: params.gapWindow,
@@ -257,12 +260,18 @@ async function generate(params: GenerateParams): Promise<void> {
       jacketOuter: pkg.pieces.jacketSolid,
       jacketA: pkg.pieces.jacketA, jacketB: pkg.pieces.jacketB, basePlate: pkg.pieces.basePlate,
       siliconeSkin: pkg.pieces.skin,
+      ...(is3 ? { jacketB1: pkg.pieces.jacketB1!, jacketB2: pkg.pieces.jacketB2! } : {}),
     },
     siliconeMl: pkg.siliconeMl, outerDim: pkg.jacketDim,
-    params: { gap, wall, clearance: params.clearance, gapWindow: params.gapWindow, ribs: params.ribs, material: params.material },
+    params: { gap, wall, clearance: params.clearance, gapWindow: params.gapWindow, ribs: params.ribs, material: params.material, panels: pkg.panels },
     axis: pkg.axis,
     elapsedMs: Date.now() - t0,
-    extraction: { A: pkg.extraction.A.freeAtMm, B: pkg.extraction.B.freeAtMm },
+    extraction: {
+      A: pkg.extraction.A.freeAtMm,
+      B: pkg.extraction.B?.freeAtMm ?? (pkg.extraction.B1?.pass && pkg.extraction.B2?.pass ? Math.min(pkg.extraction.B1.freeAtMm, pkg.extraction.B2.freeAtMm) : 0),
+      ...(is3 ? { B1: pkg.extraction.B1?.freeAtMm ?? 0, B2: pkg.extraction.B2?.freeAtMm ?? 0 } : {}),
+    },
+    panels: pkg.panels,
     warnings: [...extraWarnings, ...gateReport.warnings, ...pkg.warnings, ...state.report.warnings],
     checks: gateReport.checks,
     gatesPass: gateReport.pass,

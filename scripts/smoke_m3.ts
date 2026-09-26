@@ -72,7 +72,7 @@ check('mold package generated', pkg !== null, pkg ? `axis ±${pkg.axis}` : 'all 
 if (pkg) {
   check('hand splits on its best axis (Z)', pkg.axis === 'Z', `won on ±${pkg.axis}`);
   check('piece A extracts', pkg.extraction.A.pass, `clear at ${pkg.extraction.A.freeAtMm} mm`);
-  check('piece B extracts', pkg.extraction.B.pass, `clear at ${pkg.extraction.B.freeAtMm} mm`);
+  check('piece B extracts', pkg.extraction.B!.pass, `clear at ${pkg.extraction.B!.freeAtMm} mm`);
   check('jacket A non-empty', pkg.pieces.jacketA.triVerts.length / 3 > 1000, `${pkg.pieces.jacketA.triVerts.length / 3} tris`);
   check('jacket B non-empty', pkg.pieces.jacketB.triVerts.length / 3 > 1000, `${pkg.pieces.jacketB.triVerts.length / 3} tris`);
   check('base plate non-empty', pkg.pieces.basePlate.triVerts.length / 3 > 100, `${pkg.pieces.basePlate.triVerts.length / 3} tris`);

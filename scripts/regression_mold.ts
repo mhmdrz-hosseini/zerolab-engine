@@ -18,7 +18,7 @@ const cases: [string, ManifoldInstance, Axis][] = [
 for (const [name, solid, axis] of cases) {
   const result = await buildMoldForAxis({ mod, master: instanceToMeshArrays(solid), grid: {} as SdfGrid,
     params: { gap: 4, wall: 3, clearance: 0.25 }, axis, ports: false });
-  assert(result.extraction.A.pass && result.extraction.B.pass, `${name}: blocked release path`);
+  assert(result.extraction.A.pass && result.extraction.B!.pass, `${name}: blocked release path`);
   const parts = [result.pieces.jacketA, result.pieces.jacketB, result.pieces.basePlate].map(mesh =>
     new mod.Manifold(new mod.Mesh({ numProp: 3, ...mesh })));
   for (const part of parts) {

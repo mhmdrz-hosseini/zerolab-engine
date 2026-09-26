@@ -127,7 +127,7 @@ if (!pkg) {
   process.exit(0);
 }
 
-console.log(`${el()} package: axis ±${pkg.axis}, extraction A ${pkg.extraction.A.freeAtMm}mm (pass=${pkg.extraction.A.pass}) / B ${pkg.extraction.B.freeAtMm}mm (pass=${pkg.extraction.B.pass})`);
+console.log(`${el()} package: axis ±${pkg.axis}, extraction A ${pkg.extraction.A.freeAtMm}mm (pass=${pkg.extraction.A.pass}) / B ${pkg.extraction.B!.freeAtMm}mm (pass=${pkg.extraction.B!.pass})`);
 console.log(`${el()} jacket ${pkg.jacketDim.map((d) => d.toFixed(0)).join(' x ')} mm, plate ${pkg.plateDim.map((d) => d.toFixed(0)).join(' x ')} mm`);
 
 const gates = runGates({

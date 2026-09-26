@@ -192,7 +192,7 @@ const gates = runGates({
 });
 
 console.log(`\n--- OUR mold ---`);
-console.log(`axis ±${pkg.axis} | extraction A ${pkg.extraction.A.freeAtMm}mm (pass=${pkg.extraction.A.pass}) / B ${pkg.extraction.B.freeAtMm}mm (pass=${pkg.extraction.B.pass})`);
+console.log(`axis ±${pkg.axis} | extraction A ${pkg.extraction.A.freeAtMm}mm (pass=${pkg.extraction.A.pass}) / B ${pkg.extraction.B!.freeAtMm}mm (pass=${pkg.extraction.B!.pass})`);
 console.log(`jacket ${pkg.jacketDim.map((d) => d.toFixed(0)).join('×')} mm | plate ${pkg.plateDim.map((d) => d.toFixed(0)).join('×')} mm | silicone ${siliconeMl.toFixed(0)} mL`);
 for (const c of gates.checks) console.log(`  gate ${c.pass ? '✓' : c.hard ? '✗' : '·'} ${c.name}: ${c.detail}`);
 

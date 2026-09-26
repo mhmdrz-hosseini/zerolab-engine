@@ -137,7 +137,7 @@ const { files } = buildPrintFiles({
     params: { gap: GAP, wall: WALL, clearance: 0.25 },
     axis: pkg.axis,
     siliconeMl: pkg.siliconeMl,
-    extraction: { A: pkg.extraction.A.freeAtMm, B: pkg.extraction.B.freeAtMm },
+    extraction: { A: pkg.extraction.A.freeAtMm, B: pkg.extraction.B!.freeAtMm },
     jacketDim: [...pkg.jacketDim],
     plateDim: [...bbOf(pkg.pieces.basePlate)],
     warnings: [...gates.warnings, ...pkg.warnings],
@@ -155,7 +155,7 @@ for (const [path, data] of Object.entries(files)) {
 console.log(`${el()} package written to ${OUT_DIR}/`);
 
 console.log(`\nframe: vert ${pkg.frame.vert}, pull ±${pkg.frame.pull}, base ${pkg.frame.base.toFixed(1)}, mid ${pkg.frame.mid.toFixed(1)}, crown ${pkg.frame.crown.toFixed(1)}`);
-console.log(`jacket ${pkg.jacketDim.map((d) => d.toFixed(1)).join(' × ')} mm · plate ${pkg.plateDim.map((d) => d.toFixed(1)).join(' × ')} mm · silicone ${pkg.siliconeMl.toFixed(0)} mL · extraction A ${pkg.extraction.A.freeAtMm} / B ${pkg.extraction.B.freeAtMm} mm`);
+console.log(`jacket ${pkg.jacketDim.map((d) => d.toFixed(1)).join(' × ')} mm · plate ${pkg.plateDim.map((d) => d.toFixed(1)).join(' × ')} mm · silicone ${pkg.siliconeMl.toFixed(0)} mL · extraction A ${pkg.extraction.A.freeAtMm} / B ${pkg.extraction.B!.freeAtMm} mm`);
 
 console.log(failures === 0 ? '\nSMOKE:V02 PASS' : `\nSMOKE:V02 FAIL (${failures})`);
 process.exit(failures === 0 ? 0 : 1);

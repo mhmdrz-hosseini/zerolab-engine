@@ -51,6 +51,7 @@ export interface GenerateParams {
   ribs?: boolean;      // external stiffening ribs (8 mm fins) on the jacket body
   material?: 'silicone' | 'hotWax'; // casting material — drives the material
                        // guidance (PLA fine for room-temp RTV; PETG/ASA for hot wax)
+  panels?: 2 | 3;      // 3 = multi-panel jacket (heavy half sub-split ±depth)
 }
 
 export interface GenerateResult {
@@ -60,7 +61,8 @@ export interface GenerateResult {
   params: GenerateParams;
   axis: Axis;
   elapsedMs: number;
-  extraction: { A: number; B: number };  // free-travel mm at first clearance
+  extraction: { A: number; B: number; B1?: number; B2?: number };  // free-travel mm at first clearance
+  panels?: 2 | 3;                        // jacket piece count (3 = multi-panel)
   warnings: string[];
   checks: { name: string; pass: boolean; hard: boolean; detail: string }[];
   gatesPass: boolean;                    // all hard gates green — export allowed

@@ -120,7 +120,10 @@ export function GeneratePanel() {
             {result.siliconeMl.toFixed(0)} <span className="unit">mL silicone</span>
           </div>
           <div className="hint dim">
-            Split ±{result.axis} · extraction A clears {result.extraction.A}mm, B {result.extraction.B}mm
+            Split ±{result.axis}{result.panels === 3 ? ' · 3-piece (heavy half sub-split ±depth)' : ''}
+            {result.panels === 3
+              ? ` · extraction A ${result.extraction.A}mm, B1 ${result.extraction.B1 ?? '—'}mm, B2 ${result.extraction.B2 ?? '—'}mm`
+              : ` · extraction A clears ${result.extraction.A}mm, B ${result.extraction.B}mm`}
             <br />Generated in {(result.elapsedMs / 1000).toFixed(1)}s · jacket outer {result.outerDim.map((d) => d.toFixed(0)).join(' × ')} mm
           </div>
           {result.clearanceBand && (() => {
@@ -143,7 +146,12 @@ export function GeneratePanel() {
               <div className={`gate ${v.cls}`}>
                 <span className="gate-mark">{trapped <= 5 ? '✓' : '⚠'}</span>
                 <span className="gate-name">2-piece release confidence: {v.label}</span>
-                <span className="gate-detail">{trapped.toFixed(1)}% trapped geometry along ±{result.axis}{trapped > 5 ? ' — test-print before committing; multi-panel jackets (planned) raise this' : ''}</span>
+                <span className="gate-detail">{trapped.toFixed(1)}% trapped geometry along ±{result.axis}{result.panels === 3 ? ' — 3-piece build active' : trapped > 5 ? ' — test-print before committing' : ''}</span>
+                {trapped > 5 && result.panels !== 3 && (
+                  <button className="chip" onClick={() => generate({ ...params, panels: 3 })} disabled={busy} title="sub-splits the trap-heavy half along ±depth so fold channels open sideways">
+                    Generate 3-piece jacket
+                  </button>
+                )}
               </div>
             );
           })()}
@@ -151,7 +159,14 @@ export function GeneratePanel() {
             <button className={`chip${layers.master ? ' on' : ''}`} onClick={() => toggleLayer('master')}>Master</button>
             <button className={`chip${layers.skin ? ' on' : ''}`} onClick={() => toggleLayer('skin')}>Silicone</button>
             <button className={`chip${layers.jacketA ? ' on' : ''}`} onClick={() => toggleLayer('jacketA')}>Jacket A</button>
-            <button className={`chip${layers.jacketB ? ' on' : ''}`} onClick={() => toggleLayer('jacketB')}>Jacket B</button>
+            {result.panels === 3 ? (
+              <>
+                <button className={`chip${layers.jacketB1 ? ' on' : ''}`} onClick={() => toggleLayer('jacketB1')}>Jacket B1</button>
+                <button className={`chip${layers.jacketB2 ? ' on' : ''}`} onClick={() => toggleLayer('jacketB2')}>Jacket B2</button>
+              </>
+            ) : (
+              <button className={`chip${layers.jacketB ? ' on' : ''}`} onClick={() => toggleLayer('jacketB')}>Jacket B</button>
+            )}
             <button className={`chip${layers.plate ? ' on' : ''}`} onClick={() => toggleLayer('plate')}>Base plate</button>
             <button className={`chip${layers.outer ? ' on' : ''}`} onClick={() => toggleLayer('outer')}>Outer ghost</button>
           </div>

@@ -195,12 +195,17 @@ export function runGates(opts: {
     return [lo, hi];
   };
 
-  // hard: each jacket half starts exactly at the plate top and never hangs below it
-  for (const [i, piece] of opts.pieceArrays.slice(0, 2).entries()) {
+  // hard: each jacket piece starts exactly at the plate top and never hangs
+  // below it (2-piece: [A, B, plate]; 3-piece: [A, B1, B2, plate])
+  const jacketPieces = opts.pieceArrays.slice(0, -1);
+  const plateArr = opts.pieceArrays[opts.pieceArrays.length - 1];
+  void plateArr;
+  for (const [i, piece] of jacketPieces.entries()) {
     const [zlo] = vertRange(piece);
     const seatOk = Math.abs(zlo - frame.base) <= 2 * step;
+    const label = jacketPieces.length === 2 ? (i === 0 ? 'A' : 'B') : ['A', 'B1', 'B2'][i] ?? `${i + 1}`;
     checks.push({
-      name: `Jacket ${i === 0 ? 'A' : 'B'} seats on the plate`,
+      name: `Jacket ${label} seats on the plate`,
       pass: seatOk,
       hard: true,
       detail: seatOk
@@ -253,7 +258,7 @@ export function runGates(opts: {
     });
   });
 
-  const audit = clearanceAudit(opts.pieceArrays.slice(0, 2), opts.master, opts.gap);
+  const audit = clearanceAudit(jacketPieces, opts.master, opts.gap);
   const tightHug = opts.gapWindow !== undefined && opts.gapWindow < opts.gap;
   checks.push({
     name: 'Master-to-jacket clearance audit',

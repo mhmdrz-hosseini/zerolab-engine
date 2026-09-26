@@ -10,6 +10,7 @@
 // steps and tests BVH overlap against the glove and the master.
 import * as THREE from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
+import { trappedColumnMask } from './analyze';
 import { type Loops } from './contours';
 import { buildEnvelope } from './envelope';
 import { instanceToMeshArrays } from './offset';
@@ -148,6 +149,69 @@ function bboxOfArrays(m: MeshArrays): { min: number[]; dim: number[] } {
   return { min, dim: [max[0] - min[0], max[1] - min[1], max[2] - min[2]] };
 }
 
+/**
+ * Machine the tongue/groove joint between two complementary halves of `ref`
+ * (the solid the seam section is taken from) along `axis` at plane `mid`.
+ * The "pos" role receives the tapered tongue, the "neg" role the clearance
+ * groove with lead-in flare. `flip` mirrors the spans for when the pos ROLE
+ * is played by the axis-negative half (3-piece builds put the sub-split on
+ * the groove side, so the tongue half may be the −axis one). Used for the
+ * main ±pull joint and for the 3-piece sub-joint alike.
+ */
+function machineJoint(deps: {
+  mod: ManifoldMod;
+  track: <T extends { delete(): void }>(x: T) => T;
+  ref: ManifoldInstance;       // solid the seam section is taken from
+  axis: Axis;
+  mid: number;
+  wall: number;
+  clearance: number;
+  label: string;
+  flip?: boolean;              // pos role sits on the axis-NEGATIVE side
+}, posHalf: ManifoldInstance, negHalf: ManifoldInstance): { pos: ManifoldInstance; neg: ManifoldInstance } {
+  const { track, ref, axis, mid, wall, clearance } = deps;
+  const s = deps.flip ? -1 : 1; // direction from the face into the neg role, in axis coords
+  const span = (a: number, b: number): [number, number] => a <= b ? [a, b] : [b, a];
+  const p = AXES.indexOf(axis);
+  let localRef = ref;
+  if (p === 0) localRef = track(track(ref.rotate(0, -90, 0)).rotate(0, 0, -90));
+  if (p === 1) localRef = track(track(ref.rotate(90, 0, 0)).rotate(0, 0, 90));
+  const seam = track(localRef.slice(mid));
+  const inset = Math.max(0.65, wall * 0.28);
+  const depth = Math.min(V02.tongue, wall * 0.65);
+  const tongueCS = track(seam.offset(-inset, 'Round', 2, 32).simplify(1e-4));
+  // Stepped tip taper (audit §12): the last `tipTaper` mm of the lip shrink
+  // in two 0.08 mm steps so the tongue finds the flared groove mouth instead
+  // of butting against it. Rings that pinch empty on thin walls are skipped.
+  const tipH = Math.min(V02.tipTaper, depth * 0.45);
+  const tipHighCS = track(tongueCS.offset(-0.08, 'Round', 2, 32).simplify(1e-4));
+  const tipLowCS = track(tongueCS.offset(-0.16, 'Round', 2, 32).simplify(1e-4));
+  const mainTongue = track(prismOnPull(tongueCS, p, ...span(mid - s * (depth - tipH), mid + s * 0.2)));
+  let tongue = mainTongue;
+  if (tipHighCS.area() > 1e-6) {
+    tongue = track(tongue.add(track(prismOnPull(tipHighCS, p, ...span(mid - s * (depth - tipH / 2), mid - s * (depth - tipH))))));
+  }
+  if (tipLowCS.area() > 1e-6) {
+    tongue = track(tongue.add(track(prismOnPull(tipLowCS, p, ...span(mid - s * depth, mid - s * (depth - tipH / 2))))));
+  }
+  const grooveCS = track(tongueCS.offset(clearance, 'Round', 2, 32).simplify(1e-4));
+  const groove = track(prismOnPull(grooveCS, p, ...span(mid - s * (depth + clearance), mid + s * 0.01)));
+  // Lead-in flare (audit §12): the groove mouth widens for the first
+  // `leadDepth` mm. Kept strictly inside the wall section (never re-cutting
+  // the cavity face): flare ≤ inset − clearance − 0.1.
+  const flare = Math.min(V02.leadFlare, Math.max(0, inset - clearance - 0.1));
+  const flareCS = track(tongueCS.offset(clearance + flare, 'Round', 2, 32).simplify(1e-4));
+  const flarePrism = track(prismOnPull(flareCS, p, ...span(mid - s * Math.min(V02.leadDepth, depth * 0.6), mid + s * 0.01)));
+  if (tongue.volume() < 0.1) throw new Error(`${deps.label}: joint is empty — increase the wall thickness`);
+  let pos = track(posHalf.add(tongue));
+  let neg = track(negHalf.subtract(groove));
+  neg = track(neg.subtract(flarePrism));
+  if (!isOk(pos) || !isOk(neg)) throw new Error(`${deps.label}: kernel rejected the tongue/groove features`);
+  const overlap = track(pos.intersect(neg));
+  if (overlap.volume() > 0.01) throw new Error(`${deps.label}: joint halves interfere`);
+  return { pos, neg };
+}
+
 function isOk(inst: ManifoldInstance): boolean {
   const st = inst.status();
   const v = typeof st === 'object' && st !== null ? (st as { code?: number | string }).code : st;
@@ -157,7 +221,9 @@ function isOk(inst: ManifoldInstance): boolean {
 export interface ExtractionResult { pass: boolean; freeAtMm: number }
 export interface MoldPieces {
   jacketA: MeshArrays;
-  jacketB: MeshArrays;
+  jacketB: MeshArrays;           // 2-piece: the −pull half. 3-piece: unused shell
+  jacketB1?: MeshArrays;         // 3-piece: heavy-half sub-panels (±depth pull)
+  jacketB2?: MeshArrays;
   basePlate: MeshArrays;
   skin: MeshArrays;      // the glove: cavity prism − master (silicone fill preview)
   jacketSolid: MeshArrays; // pre-split jacket (viewer "outer" layer)
@@ -167,7 +233,8 @@ export interface AxisAttempt {
   axis: Axis;
   frame: MoldFrame;
   pieces: MoldPieces;
-  extraction: { A: ExtractionResult; B: ExtractionResult };
+  extraction: { A: ExtractionResult; B: ExtractionResult | null; B1?: ExtractionResult | null; B2?: ExtractionResult | null };
+  panels: 2 | 3;
   jacketDim: [number, number, number];
   plateDim: [number, number, number];
   ports: PortsPlan;
@@ -206,7 +273,7 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
   try {
     const p = AXES.indexOf(axis);
     const v = AXES.indexOf(frame.vert);
-    const pv = UNIT[axis];
+    const pv = UNIT[axis]; // pull direction (roles may swap for 3-piece builds)
     const { gap, wall } = params;
 
     if (![gap, wall, params.clearance].every(Number.isFinite) || gap <= 0 || wall < 2 || params.clearance < 0.05 || params.clearance > wall / 3) {
@@ -401,50 +468,67 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
       if (!isOk(jacket)) throw new Error('kernel rejected the elephant-foot relief');
     }
 
+    // P7 multi-panel: for a 3-piece build, find which pull side carries the
+    // trapping (master verts inside trapped columns). The heavy side must be
+    // the sub-split one and the sub-split side always carries the GROOVE
+    // (cutting through the tongue would orphan its halves), so when the heavy
+    // side is the +axis one the joint roles swap: the −axis half plays the
+    // tongue role (machineJoint `flip` mirrors its spans).
+    let tongueIsPositive = true;
+    if (params.panels === 3) {
+      const trap = trappedColumnMask(master, axis, 64);
+      const u3t = (p + 1) % 3, v3t = (p + 2) % 3;
+      const mbb = bboxOfArrays(master);
+      const midP = mbb.min[p] + mbb.dim[p] / 2;
+      const vp = master.vertProperties;
+      let posCount = 0, negCount = 0;
+      const nV = vp.length / 3;
+      for (let i = 0; i < nV; i++) {
+        const iu = Math.max(0, Math.min(trap.grid - 1, Math.floor(((vp[i * 3 + u3t] - trap.minU) / trap.spanU) * trap.grid)));
+        const iv = Math.max(0, Math.min(trap.grid - 1, Math.floor(((vp[i * 3 + v3t] - trap.minV) / trap.spanV) * trap.grid)));
+        if (!trap.mask[iv * trap.grid + iu]) continue;
+        if (vp[i * 3 + p] >= midP) posCount++; else negCount++;
+      }
+      tongueIsPositive = posCount <= negCount; // heavy side takes the groove role
+      warnings.push(`3-piece: heavy side is ${posCount > negCount ? '+' : '−'}${axis} (${Math.max(posCount, negCount)} of ${posCount + negCount} trapped verts) — sub-splitting it along ±${frame.depth}`);
+    }
+
     progress('Splitting ±' + axis + ' at the mid-plane', 0.5);
-    const halfA = track(jacket.trimByPlane([...pv], frame.mid));
-    const halfB = track(jacket.trimByPlane([...pv].map((n) => -n), -frame.mid));
-    if (halfA.volume() < 1 || halfB.volume() < 1) throw new Error('split produced an empty half');
+    const halfPos = track(jacket.trimByPlane([...pv], frame.mid));
+    const halfNeg = track(jacket.trimByPlane([...pv].map((n) => -n), -frame.mid));
+    if (halfPos.volume() < 1 || halfNeg.volume() < 1) throw new Error('split produced an empty half');
     const jacketSolidArr = instanceToMeshArrays(jacket);
 
     progress('Machining tongue, groove and vents', 0.6);
-    // Take the REAL wall section at the split: no origin/symmetry assumptions.
-    let localJacket = jacket;
-    if (p === 0) localJacket = track(track(jacket.rotate(0, -90, 0)).rotate(0, 0, -90));
-    if (p === 1) localJacket = track(track(jacket.rotate(90, 0, 0)).rotate(0, 0, 90));
-    const seam = track(localJacket.slice(frame.mid));
-    const inset = Math.max(0.65, wall * 0.28);
-    const depth = Math.min(V02.tongue, wall * 0.65);
-    const tongueCS = track(seam.offset(-inset, 'Round', 2, 32).simplify(1e-4));
-    // Stepped tip taper (audit §12): the last `tipTaper` mm of the lip shrink
-    // in two 0.08 mm steps so the tongue finds the flared groove mouth instead
-    // of butting against it. Rings that pinch empty on thin walls are skipped.
-    const tipH = Math.min(V02.tipTaper, depth * 0.45);
-    const tipHighCS = track(tongueCS.offset(-0.08, 'Round', 2, 32).simplify(1e-4));
-    const tipLowCS = track(tongueCS.offset(-0.16, 'Round', 2, 32).simplify(1e-4));
-    const mainTongue = track(prismOnPull(tongueCS, p, frame.mid - depth + tipH, frame.mid + 0.2));
-    let tongue = mainTongue;
-    if (tipHighCS.area() > 1e-6) {
-      tongue = track(tongue.add(track(prismOnPull(tipHighCS, p, frame.mid - depth + tipH * 0.5, frame.mid - depth + tipH))));
+    const jointed = machineJoint(
+      { mod, track, ref: jacket, axis, mid: frame.mid, wall, clearance: params.clearance, label: 'main joint', flip: !tongueIsPositive },
+      tongueIsPositive ? halfPos : halfNeg,
+      tongueIsPositive ? halfNeg : halfPos,
+    );
+    let A = jointed.pos;       // tongue half — slides ±axis per tongueIsPositive
+    let B = jointed.neg;       // groove half — the sub-split (heavy) side
+
+    // 3-piece: sub-split the groove half along the depth axis at the master's
+    // depth mid-plane. The cut opens the fold channels trapped by the single
+    // ±pull pull; each sub-half then slides out sideways.
+    let b1: ManifoldInstance | null = null, b2: ManifoldInstance | null = null;
+    if (params.panels === 3) {
+      progress('Building the third panel (sub-splitting the heavy half)', 0.66);
+      const dIdx = AXES.indexOf(frame.depth);
+      const db = bboxOfArrays(master);
+      const dmid = db.min[dIdx] + db.dim[dIdx] / 2;
+      const dv = UNIT[frame.depth];
+      const b1raw = track(B.trimByPlane([...dv], dmid));
+      const b2raw = track(B.trimByPlane([...dv].map((n) => -n), -dmid));
+      if (b1raw.volume() < 1 || b2raw.volume() < 1) throw new Error('3-piece sub-split produced an empty half');
+      const bRef = track(b1raw.add(b2raw));
+      const subJointed = machineJoint(
+        { mod, track, ref: bRef, axis: frame.depth, mid: dmid, wall, clearance: params.clearance, label: 'sub joint' },
+        b1raw, b2raw,
+      );
+      b1 = subJointed.pos;
+      b2 = subJointed.neg;
     }
-    if (tipLowCS.area() > 1e-6) {
-      tongue = track(tongue.add(track(prismOnPull(tipLowCS, p, frame.mid - depth, frame.mid - depth + tipH * 0.5))));
-    }
-    const grooveCS = track(tongueCS.offset(params.clearance, 'Round', 2, 32).simplify(1e-4));
-    const groove = track(prismOnPull(grooveCS, p, frame.mid - depth - params.clearance, frame.mid + 0.01));
-    // Lead-in flare (audit §12): the groove mouth widens for the first
-    // `leadDepth` mm. Kept strictly inside the wall section (never re-cutting
-    // the cavity face): flare ≤ inset − clearance − 0.1.
-    const flare = Math.min(V02.leadFlare, Math.max(0, inset - params.clearance - 0.1));
-    const flareCS = track(tongueCS.offset(params.clearance + flare, 'Round', 2, 32).simplify(1e-4));
-    const flarePrism = track(prismOnPull(flareCS, p, frame.mid - Math.min(V02.leadDepth, depth * 0.6), frame.mid + 0.01));
-    if (tongue.volume() < 0.1) throw new Error('Joint is empty: increase the wall thickness');
-    let A = track(halfA.add(tongue));
-    let B = track(halfB.subtract(groove));
-    B = track(B.subtract(flarePrism));
-    if (!isOk(A) || !isOk(B)) throw new Error('Kernel rejected the tongue/groove features');
-    const overlap = track(A.intersect(B));
-    if (overlap.volume() > 0.01) throw new Error('Joint halves interfere');
 
     let ports: PortsPlan = { crown: null, vents: [], vAx: v, u3: (v + 1) % 3, v3: (v + 2) % 3 };
     if (deps.ports) {
@@ -471,6 +555,12 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
     const aArr = instanceToMeshArrays(A);
     const bArr = instanceToMeshArrays(B);
     const skinArr = instanceToMeshArrays(skin);
+    let b1Arr: MeshArrays | null = null, b2Arr: MeshArrays | null = null;
+    if (b1 && b2) {
+      b1 = printable(b1, 'Jacket B1'); b2 = printable(b2, 'Jacket B2');
+      b1Arr = instanceToMeshArrays(b1);
+      b2Arr = instanceToMeshArrays(b2);
+    }
     progress('Simulating the release path', 0.82);
     // Rigid-release semantics, matching the commercial systems: the jacket
     // half slides against the FLEXIBLE cured silicone, which conforms and
@@ -486,14 +576,25 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
     // Report the overlap VOLUME: the extraction sim fails on PRESSING-IN
     // (non-decreasing penetration = the half jams against the master), not on
     // thin construction sheets whose contact decays as the half slides away.
-    const collides = (piece: ManifoldInstance, dir: number) => (distance: number) => {
-      const moved = piece.translate(pv[0] * dir * distance, pv[1] * dir * distance, pv[2] * dir * distance);
+    const collidesOn = (piece: ManifoldInstance, dirVec: number[]) => (distance: number) => {
+      const moved = piece.translate(dirVec[0] * distance, dirVec[1] * distance, dirVec[2] * distance);
       const overlap = moved.intersect(masterMan);
       try { return Math.max(0, overlap.volume()); } finally { overlap.delete(); moved.delete(); }
     };
-    const exA = simulate(aArr, [masterArr], axis, 1, travelFor(master, aArr), collides(A, 1));
-    progress('Simulating the release path (half B)', 0.86);
-    const exB = simulate(bArr, [masterArr], axis, -1, travelFor(master, bArr), collides(B, -1));
+    const aDir = (tongueIsPositive ? 1 : -1) as 1 | -1;
+    const exA = simulate(aArr, [masterArr], axis, aDir, travelFor(master, aArr), collidesOn(A, UNIT[axis].map((n) => n * aDir)));
+    let exB: ExtractionResult | null = null;
+    if (!b1Arr) {
+      progress('Simulating the release path (half B)', 0.86);
+      const bDir = -aDir as 1 | -1;
+      exB = simulate(bArr, [masterArr], axis, bDir, travelFor(master, bArr), collidesOn(B, UNIT[axis].map((n) => n * bDir)));
+    }
+    let exB1: ExtractionResult | null = null, exB2: ExtractionResult | null = null;
+    if (b1 && b2 && b1Arr && b2Arr) {
+      progress('Simulating the release path (sub-panels B1/B2)', 0.88);
+      exB1 = simulate(b1Arr, [masterArr], frame.depth, 1, travelFor(master, b1Arr), collidesOn(b1, UNIT[frame.depth]));
+      exB2 = simulate(b2Arr, [masterArr], frame.depth, -1, travelFor(master, b2Arr), collidesOn(b2, UNIT[frame.depth].map((n) => -n)));
+    }
 
     progress('Building the contoured base plate', 0.9);
     const plateBlank = track(prismOnVert(plateOutlineCS, v, frame.base - V02.plateT, frame.base));
@@ -518,8 +619,12 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
     return {
       axis,
       frame,
-      pieces: { jacketA: aArr, jacketB: bArr, basePlate: plateArr, skin: skinArr, jacketSolid: jacketSolidArr },
-      extraction: { A: exA, B: exB },
+      pieces: {
+        jacketA: aArr, jacketB: bArr, basePlate: plateArr, skin: skinArr, jacketSolid: jacketSolidArr,
+        ...(b1Arr && b2Arr ? { jacketB1: b1Arr, jacketB2: b2Arr } : {}),
+      },
+      extraction: { A: exA, B: exB, B1: exB1, B2: exB2 },
+      panels: b1Arr ? 3 : 2,
       jacketDim,
       plateDim,
       ports,
@@ -614,7 +719,8 @@ export interface MoldPackage {
   axis: Axis;
   frame: MoldFrame;
   pieces: MoldPieces;
-  extraction: { A: ExtractionResult; B: ExtractionResult };
+  extraction: { A: ExtractionResult; B: ExtractionResult | null; B1?: ExtractionResult | null; B2?: ExtractionResult | null };
+  panels: 2 | 3;
   jacketDim: [number, number, number];
   plateDim: [number, number, number];
   ports: PortsPlan;
@@ -625,7 +731,16 @@ export interface MoldPackage {
   failedAxes: { axis: Axis; reason: string }[];
 }
 
-/** Ranked auto-retry ladder (policy: wayfinder T003). */
+const extractionPass = (e: { A: ExtractionResult; B: ExtractionResult | null; B1?: ExtractionResult | null; B2?: ExtractionResult | null }): boolean =>
+  e.A.pass && (e.B ? e.B.pass : (e.B1?.pass ?? false) && (e.B2?.pass ?? false));
+const extractionFailText = (e: { A: ExtractionResult; B: ExtractionResult | null; B1?: ExtractionResult | null; B2?: ExtractionResult | null }): string => {
+  const part = (name: string, r: ExtractionResult | null | undefined): string => r ? `${name} ${r.pass ? '✓' : '✗'}@${r.freeAtMm}mm` : `${name} —`;
+  return `extraction failed (${part('A', e.A)}, ${part('B', e.B)}, ${part('B1', e.B1)}, ${part('B2', e.B2)})`;
+};
+
+/** Ranked auto-retry ladder (policy: wayfinder T003). When every 2-piece
+ *  candidate fails, the best axis is retried once as a 3-piece (multi-panel)
+ *  build before giving up. */
 export async function generateMoldPackage(deps: {
   mod: ManifoldMod;
   master: MeshArrays;
@@ -646,14 +761,31 @@ export async function generateMoldPackage(deps: {
         mod: deps.mod, master: deps.master,
         grid: deps.grid, params: deps.params, axis, ports: deps.ports, onProgress: deps.onProgress,
       });
-      if (attempt.extraction.A.pass && attempt.extraction.B.pass) {
+      if (extractionPass(attempt.extraction)) {
         return { ...attempt, failedAxes };
       }
-      failedAxes.push({ axis, reason: `extraction failed (A ${attempt.extraction.A.pass ? '✓' : '✗'} at ${attempt.extraction.A.freeAtMm}mm, B ${attempt.extraction.B.pass ? '✓' : '✗'} at ${attempt.extraction.B.freeAtMm}mm)` });
+      failedAxes.push({ axis, reason: extractionFailText(attempt.extraction) });
     } catch (err) {
       failedAxes.push({ axis, reason: err instanceof Error ? err.message : String(err) });
     }
     deps.onProgress?.(`Rejected ±${axis}: ${failedAxes[failedAxes.length - 1].reason}`, (i + 1) / ranked.length);
+  }
+  // 2-piece exhausted: one 3-piece retry on the highest-ranked axis.
+  if (deps.params.panels !== 3 && ranked.length > 0) {
+    const axis = ranked[0];
+    deps.onProgress?.(`No 2-piece split extracted — retrying ±${axis} as a 3-piece jacket`, 0.05);
+    try {
+      const attempt = await buildMoldForAxis({
+        mod: deps.mod, master: deps.master,
+        grid: deps.grid, params: { ...deps.params, panels: 3 }, axis, ports: deps.ports, onProgress: deps.onProgress,
+      });
+      if (extractionPass(attempt.extraction)) {
+        return { ...attempt, failedAxes };
+      }
+      failedAxes.push({ axis: axis as Axis, reason: `3-piece ${extractionFailText(attempt.extraction)}` });
+    } catch (err) {
+      failedAxes.push({ axis: axis as Axis, reason: `3-piece: ${err instanceof Error ? err.message : String(err)}` });
+    }
   }
   return null;
 }

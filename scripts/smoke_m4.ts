@@ -49,7 +49,7 @@ async function runModel(mod: Awaited<ReturnType<typeof loadManifold>>, file: str
   check(`${file}: mold package generated`, pkg !== null, pkg ? `axis ±${pkg.axis}` : 'all axes failed');
   if (!pkg) return;
 
-  check(`${file}: both pieces extract`, pkg.extraction.A.pass && pkg.extraction.B.pass, `A ${pkg.extraction.A.freeAtMm}mm / B ${pkg.extraction.B.freeAtMm}mm`);
+  check(`${file}: both pieces extract`, pkg.extraction.A.pass && pkg.extraction.B!.pass, `A ${pkg.extraction.A.freeAtMm}mm / B ${pkg.extraction.B!.freeAtMm}mm`);
   check(`${file}: open crown, no pour bore`, pkg.ports.crown === null, `crown ${String(pkg.ports.crown)}`);
   check(`${file}: air vents placed`, pkg.ports.vents.length >= 1, `${pkg.ports.vents.length} vents`);
 
@@ -74,7 +74,7 @@ async function runModel(mod: Awaited<ReturnType<typeof loadManifold>>, file: str
       params: { gap: GAP, wall: WALL, clearance: 0.25 },
       axis: pkg.axis,
       siliconeMl: pkg.siliconeMl,
-      extraction: { A: pkg.extraction.A.freeAtMm, B: pkg.extraction.B.freeAtMm },
+      extraction: { A: pkg.extraction.A.freeAtMm, B: pkg.extraction.B!.freeAtMm },
       jacketDim: [...pkg.jacketDim],
       plateDim: [...pkg.plateDim],
       warnings: gates.warnings,

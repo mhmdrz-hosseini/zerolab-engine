@@ -135,7 +135,7 @@ function meshToGlb(m: MeshArrays): ArrayBuffer {
     onProgress: () => {},
   });
   check('ladder respects ranked order (±X first)', pkg !== null && pkg.axis === 'X', pkg ? `axis ±${pkg.axis}, rejected: ${pkg.failedAxes.map((f) => f.axis).join(', ') || 'none'}` : 'all failed');
-  check('sim confirms ±X feasible despite ray screen', pkg !== null && pkg.extraction.A.pass && pkg.extraction.B.pass, `A ${pkg?.extraction.A.freeAtMm}mm / B ${pkg?.extraction.B.freeAtMm}mm (ray screen said 89% trapped)`);
+  check('sim confirms ±X feasible despite ray screen', pkg !== null && pkg.extraction.A.pass && pkg.extraction.B!.pass, `A ${pkg?.extraction.A.freeAtMm}mm / B ${pkg?.extraction.B!.freeAtMm}mm (ray screen said 89% trapped)`);
   console.log(`  ladder runtime ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 }
 

@@ -11,6 +11,8 @@ export interface Layers {
   outer: boolean;
   jacketA: boolean;
   jacketB: boolean;
+  jacketB1: boolean;
+  jacketB2: boolean;
   plate: boolean;
 }
 
@@ -56,14 +58,14 @@ function getWorker(): Worker {
         phase: 'ready',
         progress: null,
         result: msg.result,
-        layers: { master: true, skin: true, outer: false, jacketA: false, jacketB: false, plate: false },
+        layers: { master: true, skin: true, outer: false, jacketA: false, jacketB: false, jacketB1: false, jacketB2: false, plate: false },
       }));
     } else if (msg.type === 'failure') {
       useStore.setState({
         phase: 'ready',
         progress: null,
         failure: { axis: msg.axis, message: msg.message, trapFlags: msg.trapFlags },
-        layers: { ...useStore.getState().layers, master: true, skin: false, jacketA: false, jacketB: false, plate: false },
+        layers: { ...useStore.getState().layers, master: true, skin: false, jacketA: false, jacketB: false, jacketB1: false, jacketB2: false, plate: false },
       });
     } else if (msg.type === 'export') {
       const url = URL.createObjectURL(new Blob([msg.blob], { type: 'application/zip' }));
@@ -89,7 +91,7 @@ export const useStore = create<StoreState>((set) => ({
   failure: null,
   exportUrl: null,
   exportName: null,
-  layers: { master: true, skin: true, outer: false, jacketA: false, jacketB: false, plate: false },
+  layers: { master: true, skin: true, outer: false, jacketA: false, jacketB: false, jacketB1: false, jacketB2: false, plate: false },
   ingest: (file) => {
     void file.arrayBuffer().then((bytes) => {
       useStore.getState().ingestBytes(bytes, file.name);
@@ -108,5 +110,5 @@ export const useStore = create<StoreState>((set) => ({
     getWorker().postMessage({ type: 'export' });
   },
   toggleLayer: (k) => set((s) => ({ layers: { ...s.layers, [k]: !s.layers[k] } })),
-  reset: () => set({ phase: 'idle', progress: null, error: null, failure: null, report: null, preview: null, result: null, exportUrl: null, exportName: null, layers: { master: true, skin: true, outer: false, jacketA: false, jacketB: false, plate: false } }),
+  reset: () => set({ phase: 'idle', progress: null, error: null, failure: null, report: null, preview: null, result: null, exportUrl: null, exportName: null, layers: { master: true, skin: true, outer: false, jacketA: false, jacketB: false, jacketB1: false, jacketB2: false, plate: false } }),
 }));

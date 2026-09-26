@@ -42,10 +42,21 @@ export function buildPrintFiles(deps: {
   const root = `pourbox_${safe}`;
   const stl = (m: MeshArrays) => new Uint8Array(writeStlBinary(m));
 
+  // 3-piece packages swap jacket_B for the two sub-panels
+  const is3 = !!(parts.jacketB1 && parts.jacketB2);
+  const jacketDefs = is3
+    ? [
+      { name: 'jacket A', file: '02_jacket/jacket_A.stl', mesh: parts.jacketA, note: 'print rim-down; tongue side is the mating face' },
+      { name: 'jacket B1', file: '02_jacket/jacket_B1.stl', mesh: parts.jacketB1!, note: 'print rim-down; slides +depth after A is off' },
+      { name: 'jacket B2', file: '02_jacket/jacket_B2.stl', mesh: parts.jacketB2!, note: 'print rim-down; slides −depth after A is off' },
+    ]
+    : [
+      { name: 'jacket A', file: '02_jacket/jacket_A.stl', mesh: parts.jacketA, note: 'print rim-down; tongue side is the mating face' },
+      { name: 'jacket B', file: '02_jacket/jacket_B.stl', mesh: parts.jacketB, note: 'print rim-down; groove side is the mating face' },
+    ];
   const partDefs = [
     { name: 'master base', file: '01_master/master_base.stl', mesh: masterMesh, note: 'doll + fused base plate — print plate-down as one piece' },
-    { name: 'jacket A', file: '02_jacket/jacket_A.stl', mesh: parts.jacketA, note: 'print rim-down; tongue side is the mating face' },
-    { name: 'jacket B', file: '02_jacket/jacket_B.stl', mesh: parts.jacketB, note: 'print rim-down; groove side is the mating face' },
+    ...jacketDefs,
     { name: 'silicone skin preview', file: '03_preview/silicone_skin.stl', mesh: parts.siliconeSkin, note: 'NOT printed — this is the mold the silicone will become' },
   ];
 
@@ -113,12 +124,16 @@ ${materialNote}
 - Per-part slicer settings ship in \`print_profile.json\` — the **master** wants quality (0.12–0.16 mm layers; the silicone reproduces its surface), the **jackets** want speed/structure (0.6 mm nozzle OK).
 
 ## Steps
-1. Print \`master_base\` (doll + fused base plate, plate-down), \`jacket_A\` and \`jacket_B\` (rim-down).
-2. Bring **jacket B** in from its side; seat its rim on the base plate.
-3. Fit **jacket A** so its tongue enters B's groove; the rims register against the plate edge.
+1. Print \`master_base\` (doll + fused base plate, plate-down), ${is3 ? '`jacket_A`, `jacket_B1` and `jacket_B2`' : '`jacket_A` and `jacket_B`'} (rim-down).
+2. ${is3
+    ? 'Join **jacket B1** and **jacket B2** on the base plate — their sub-joint registers sideways; seat both rims.'
+    : 'Bring **jacket B** in from its side; seat its rim on the base plate.'}
+3. Fit **jacket A** so its tongue enters ${is3 ? "the B1/B2 groove" : "B's groove"}; the rims register against the plate edge.
 4. Clamp the flat external seam rails, evenly spaced. Seal the base and parting seams; printed joints are not liquid-tight by themselves. Seal any optional wall outlets before filling.
 5. Pour RTV silicone slowly through the **open crown** until it reaches the brim.
-6. Cure fully, remove clips and sealant, slide jacket A along +${info.axis} and B along -${info.axis}.
+6. Cure fully, remove clips and sealant, ${is3
+    ? `slide jacket A along +${info.axis}, then B1/B2 sideways (±depth) one at a time.`
+    : `slide jacket A along +${info.axis} and B along -${info.axis}.`}
 7. Demold the master from the cured silicone. Deep undercuts or enclosed handles may need a planned cut in the silicone; rigid jacket release does not prove master release.
 
 ## Parts

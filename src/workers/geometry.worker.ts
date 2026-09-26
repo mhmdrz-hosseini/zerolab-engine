@@ -156,7 +156,7 @@ async function ingest(fileName: string, bytes: ArrayBuffer): Promise<void> {
 async function generate(params: GenerateParams): Promise<void> {
   if (!state) throw new Error('Import a master first');
   const gap = Math.min(15, Math.max(4, params.gap));
-  const wall = Math.min(6, Math.max(2, params.wall));
+  const wall = Math.min(8, Math.max(2, params.wall)); // 8: Heavy 6.5 preset must survive the clamp
   const m = await ensureMod();
   const t0 = Date.now();
 
@@ -199,7 +199,11 @@ async function generate(params: GenerateParams): Promise<void> {
   post({ type: 'progress', stage: 'Splitting jacket and simulating extraction', pct: 0.65 });
   const pkg = await generateMoldPackage({
     mod: m, master: state.master, grid,
-    params: { gap, wall, clearance: params.clearance },
+    params: {
+      gap, wall, clearance: params.clearance,
+      verticalAxis: params.verticalAxis, splitAxis: params.splitAxis,
+      gapWindow: params.gapWindow, ribs: params.ribs, material: params.material, panels: params.panels,
+    },
     rankedAxes,
     ports: false,
     onProgress: (stage, pct) => post({ type: 'progress', stage, pct: 0.65 + pct * 0.3 }),
@@ -219,7 +223,9 @@ async function generate(params: GenerateParams): Promise<void> {
       if (trap.mask[iv * trap.grid + iu]) flags[i] = 1;
     }
     post({ type: 'failure', axis: bestAxis, trappedPct: state.report.axes[0].trappedPct,
-      message: 'No candidate axis produced an extractable 2-piece mold — the highlighted regions trap the jacket on every candidate axis',
+      message: params.panels === 3
+        ? 'No extractable 3-piece split — the sub-panels fragment into disconnected pieces on this shape at these settings. Try a smaller silicone gap (the sub-panels stay connected at gap ≤ ~6 on this model) or keep the 2-piece jacket with painted supports.'
+        : 'No candidate axis produced an extractable 2-piece mold — the highlighted regions trap the jacket on every candidate axis',
       trapFlags: flags }, [flags.buffer]);
     return;
   }

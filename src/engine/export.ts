@@ -6,6 +6,7 @@ import { zipSync, type Zippable } from 'fflate';
 import { writeStlBinary } from './stl';
 import { cleanExportMesh, type MeshAudit } from './clean';
 import type { FasteningInfo, GenerateParams, MeshArrays } from './types';
+import type { PrintabilityReport } from './printability';
 
 export interface PackageInfo {
   name: string;
@@ -27,10 +28,7 @@ export interface PackageInfo {
   baseLockClip?: MeshArrays | null;
   baseLockClips?: number;
   clearanceBand?: { requestedGap: number; min: number; p10: number; p50: number; p90: number; withinBand: boolean };
-  printability?: Record<string, {
-    bedAreaMm2: number; overhangAreaMm2: number; layerStep: number; layers: number;
-    worstBands: { zLo: number; zHi: number; areaMm2: number }[];
-  }>;
+  printability?: Record<string, PrintabilityReport>;
 }
 
 export interface PrintFiles {
@@ -179,7 +177,11 @@ ${materialNote}
 ## Parts
 ${partMeta.map((p) => `- **${p.name}** — \`${p.file}\` (${p.triangles.toLocaleString()} tris${p.volumeCm3 ? `, ${p.volumeCm3} cm³` : ''}) — ${p.note}`).join('\n')}
 
-${info.printability ? `## Support forecast (coarse 45° layer analysis)\n${Object.entries(info.printability).map(([name, r]) => `- **${name}**: bed contact ≈ ${r.bedAreaMm2} mm² · unsupported growth ≈ ${r.overhangAreaMm2} mm²${r.worstBands.length ? ` — paint supports around the ${r.worstBands.slice(0, 2).map((b) => `${b.areaMm2} mm² band at z ${b.zLo}–${b.zHi}`).join(' and ')}` : ''}`).join('\n')}\n` : ''}
+${info.printability ? `## Support forecast (coarse 45° layer analysis)\n${Object.entries(info.printability).map(([name, r]) => {
+  const islands = r.unsupportedIslands?.length ?? 0;
+  const risk = r.islandRisk === 'HIGH' ? ' — ⚠ unsupported island > 15 mm² (hard-fail candidate)' : islands ? ` — ${islands} unsupported island(s) ≥ 4 mm²` : '';
+  return `- **${name}**: bed contact ≈ ${r.bedAreaMm2} mm² · unsupported growth ≈ ${r.overhangAreaMm2} mm²${r.worstBands.length ? ` — paint supports around the ${r.worstBands.slice(0, 2).map((b) => `${b.areaMm2} mm² band at z ${b.zLo}–${b.zHi}`).join(' and ')}` : ''}${risk}`;
+}).join('\n')}\n` : ''}
 ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).join('\n')}` : ''}
 `;
 

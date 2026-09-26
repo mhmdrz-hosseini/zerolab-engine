@@ -14,6 +14,7 @@
     "smoke:m5": "tsx scripts/smoke_m5.ts",
     "smoke:clamps": "tsx scripts/smoke_clamps.ts",
     "smoke:ai": "tsx scripts/smoke_ai.ts",
+    "smoke:print": "tsx scripts/smoke_print.ts",
     "postinstall": "node scripts/sync-wasm.mjs"
   },
   "dependencies": {

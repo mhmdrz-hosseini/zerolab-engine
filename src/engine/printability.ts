@@ -5,16 +5,30 @@
 // same measure as the external audit (their method: A ≈ 1,095 mm², B ≈ 2,429
 // mm² unsupported growth on a comparable package). Advisory only: modern
 // slicers paint supports; the numbers tell the user WHERE and HOW MUCH.
+//
+// V0.5 (MFG_RELIABILITY commit 4): unsupported ISLANDS — the connected
+// components of each layer's overhang diff. Thresholds (grilled 2026-09-26):
+// islands < 4 mm² are slicer-bridgeable (ignored), 4–15 mm² warn, > 15 mm²
+// are hard-fail CANDIDATES (the gate flip lands after the corpus runs clean).
 import type { ManifoldMod } from './manifoldLoader';
 import type { Axis, MeshArrays } from './types';
 
+export const ISLAND = {
+  ignoreMm2: 4,    // below: slicer bridges it — never reported
+  warnMm2: 4,      // from: reported in unsupportedIslands
+  hardMm2: 15,     // from: hard-fail candidate (gate flip pending corpus-clean)
+};
+
 export interface PrintabilityBand { zLo: number; zHi: number; areaMm2: number }
+export interface PrintabilityIsland { z: number; areaMm2: number }
 export interface PrintabilityReport {
   bedAreaMm2: number;          // first-layer contact (adhesion footprint)
   overhangAreaMm2: number;     // total unsupported growth @45° over all layers
   layerStep: number;
   layers: number;
   worstBands: PrintabilityBand[];  // merged height bands with the most overhang
+  unsupportedIslands: PrintabilityIsland[]; // islands ≥ warnMm2, largest first (≤20)
+  islandRisk: 'LOW' | 'MEDIUM' | 'HIGH';    // HIGH = hard-fail candidate present
 }
 
 const UNIT: Record<Axis, [number, number, number]> = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] };
@@ -23,6 +37,7 @@ interface CS {
   area(): number;
   offset(c: number, join?: string, m?: number, seg?: number): CS;
   subtract(o: CS): CS;
+  decompose(): CS[];
   delete(): void;
 }
 
@@ -83,6 +98,8 @@ export function analyzePrintability(deps: {
 
   // unsupported growth per layer: S_k − dilate(S_{k−1}, slope·Δz)
   const perLayer: { z: number; area: number }[] = [];
+  const islands: PrintabilityIsland[] = [];
+  let islandHard = false;
   for (let z = base + layerStep; z <= crown + 1e-9; z += layerStep) {
     const cur = sliceCS(z);
     if (!cur) continue;
@@ -90,7 +107,19 @@ export function analyzePrintability(deps: {
     if (below) {
       const dilated = below.offset(slope * layerStep, 'Round', 2, 32);
       const diff = cur.subtract(dilated);
-      perLayer.push({ z, area: diff.area() });
+      const diffArea = diff.area();
+      perLayer.push({ z, area: diffArea });
+      // islands: only decompose layers whose diff could hold a warnable island
+      if (diffArea >= ISLAND.warnMm2) {
+        for (const comp of diff.decompose()) {
+          const a = comp.area();
+          comp.delete();
+          if (a >= ISLAND.warnMm2) {
+            islands.push({ z, areaMm2: a });
+            if (a > ISLAND.hardMm2) islandHard = true;
+          }
+        }
+      }
       diff.delete();
       dilated.delete();
       below.delete();
@@ -114,6 +143,7 @@ export function analyzePrintability(deps: {
   }
   if (open) bands.push(open);
   bands.sort((a, b) => b.areaMm2 - a.areaMm2);
+  islands.sort((a, b) => b.areaMm2 - a.areaMm2);
 
   return {
     bedAreaMm2: Number(bedAreaMm2.toFixed(0)),
@@ -121,5 +151,7 @@ export function analyzePrintability(deps: {
     layerStep: Number(layerStep.toFixed(2)),
     layers: perLayer.length,
     worstBands: bands.slice(0, 3).map((b) => ({ zLo: Number(b.zLo.toFixed(1)), zHi: Number(b.zHi.toFixed(1)), areaMm2: Number(b.areaMm2.toFixed(0)) })),
+    unsupportedIslands: islands.slice(0, 20).map((i) => ({ z: Number(i.z.toFixed(1)), areaMm2: Number(i.areaMm2.toFixed(1)) })),
+    islandRisk: islandHard ? 'HIGH' : islands.length > 0 ? 'MEDIUM' : 'LOW',
   };
 }

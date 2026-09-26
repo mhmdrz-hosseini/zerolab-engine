@@ -1,5 +1,6 @@
 // Shared domain types — see docs/SPEC-v0.1.md §3.
 // MeshArrays is the single mesh currency between engine, worker, and viewer.
+import type { PrintabilityReport } from './printability';
 
 export interface MeshArrays {
   vertProperties: Float32Array; // xyz per vertex (numProp = 3)
@@ -93,13 +94,7 @@ export interface GenerateResult {
   ports: { crown: { u: number; v: number } | null; vents: number };
   clearanceBand?: { requestedGap: number; min: number; p10: number; p50: number; p90: number; withinBand: boolean };
   fastening?: FasteningInfo;
-  printability?: Record<string, {
-    bedAreaMm2: number;
-    overhangAreaMm2: number;
-    layerStep: number;
-    layers: number;
-    worstBands: { zLo: number; zHi: number; areaMm2: number }[];
-  }>;
+  printability?: Record<string, PrintabilityReport>;
 }
 
 // ---- worker protocol ----

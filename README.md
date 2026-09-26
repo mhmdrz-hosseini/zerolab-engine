@@ -2,7 +2,7 @@
 
 Turns a 3D-printable STL master into a silicone-mold tooling package: rigid printed jacket + controlled gap → pour RTV silicone → the cured silicone is the mold.
 
-- Spec: [docs/SPEC-v0.1.md](docs/SPEC-v0.1.md) · Domain glossary: [CONTEXT.md](CONTEXT.md) · Planning map: [wayfinder/MAP.md](wayfinder/MAP.md)
+- Spec: [docs/SPEC-v0.1.md](docs/SPEC-v0.1.md)
 - Status: **V0.1 complete (M1–M5)** — STL/OBJ/GLB intake → analysis → validated two-piece pour box (silicone skin mL, jacket A/B with labyrinth seam + M3 hardware, base plate with socket, fill funnel + auto vents) → zip print package. Embeddable via postMessage. See spec roadmap for V0.2 (multi-piece jackets, contoured seams, adaptive thickness, auto-vent flood solver).
 
 ## Run
@@ -25,8 +25,7 @@ All geometry runs locally in a Web Worker (manifold-3d WASM). Nothing is uploade
 - `src/engine/` — pure TS geometry modules (parse/weld, obj/glb intake, analysis, SDF offset, contours, split/assembly, ports, gates, export). Node-testable.
 - `src/workers/` — the geometry worker (owns all mesh data).
 - `src/ui/`, `src/state/` — React + zustand shell (R3F viewer).
-- `scratch/` — benchmark artifacts from the planning sessions (see wayfinder tickets).
-- `REFRENCE/` — regression models (Fatima hand, manual box/base attempts).
+- `scripts/` — smoke/regression harness (`npm run smoke*`; regression STLs are local-only, not shipped in the repo).
 
 ## Embedding
 

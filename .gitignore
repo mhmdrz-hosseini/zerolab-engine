@@ -8,5 +8,11 @@ INPUT/
 REFRENCE/
 IDEAL FOR THE STUDY/
 
+# Process/session artifacts — local only, not part of the platform
+.zcode/
+CONTEXT.md
+wayfinder/
+docs/superpowers/
+
 *.log
 .DS_Store

@@ -11,7 +11,7 @@
 import * as THREE from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
 import { trappedColumnMask } from './analyze';
-import { planClampStations, type ClampPlan, type RibExclusion } from './clamps';
+import { buildZeroClip, planClampStations, validateZeroClip, type ClampPlan, type RibExclusion } from './clamps';
 import { type Loops } from './contours';
 import { buildEnvelope } from './envelope';
 import { instanceToMeshArrays } from './offset';
@@ -131,7 +131,7 @@ function prismOnVert(cs: CS, v: number, from: number, to: number): ManifoldInsta
 }
 
 /** Extrude a pull-frame 2D profile (coords = ((p+1)%3, (p+2)%3) values) along the pull axis. */
-function prismOnPull(cs: CS, p: number, from: number, to: number): ManifoldInstance {
+export function prismOnPull(cs: CS, p: number, from: number, to: number): ManifoldInstance {
   const h = to - from;
   if (p === 2) return cs.extrude(h).translate(0, 0, from);
   if (p === 1) return cs.rotate(-90).extrude(h).rotate(-90, 0, 0).translate(0, from, 0);
@@ -240,6 +240,7 @@ export interface AxisAttempt {
   plateDim: [number, number, number];
   ports: PortsPlan;
   clampPlan: ClampPlan;  // clip stations on the frozen seam rail (always computed — binder guidance too)
+  zeroClip: MeshArrays | null; // seated ZeroClip at the first station (identical geometry for all — printed mode only)
   siliconeMl: number;
   cavityLoops: Loops;    // cavity prism outline, vert-frame (u3, v3) coords — fill-gate seed region
   cavitySections: { height: number; loops: Loops }[];
@@ -631,6 +632,31 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
     if (!isOk(plate)) throw new Error('kernel rejected the base plate');
     const plateArr = instanceToMeshArrays(plate);
 
+    // V0.5 P0: printed ZeroClips seated on the planned stations (main seam
+    // only). Built in the SEATED pose — the jaws' designed elastic overlap
+    // with the rail is the only allowed jacket contact; anything more fails
+    // validation and the package falls back to binder clamps with a warning.
+    let zeroClip: MeshArrays | null = null;
+    if (params.clampMode === 'printed' || params.clampMode === 'hybrid') {
+      progress('Building ZeroClips', 0.95);
+      clampPlan.mode = params.clampMode;
+      let fallback: string | null = null;
+      for (const st of clampPlan.stations) {
+        const clip = track(buildZeroClip({ csCtor, station: st, pull: pv }));
+        const check = validateZeroClip({ clip, jacket });
+        if (!check.ok) {
+          fallback = `ZeroClip station ${st.index}: ${check.reason} — falling back to binder clamps`;
+          break;
+        }
+        if (!zeroClip) zeroClip = instanceToMeshArrays(clip);
+      }
+      if (fallback) {
+        warnings.push(fallback);
+        clampPlan.mode = 'binder';
+        zeroClip = null;
+      }
+    }
+
     const ob = bboxOfArrays(jacketSolidArr);
     const jacketDim = [ob.dim[0], ob.dim[1], ob.dim[2]] as [number, number, number];
     const pb = bboxOfArrays(plateArr);
@@ -651,6 +677,7 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
       plateDim,
       ports,
       clampPlan,
+      zeroClip,
       siliconeMl,
       cavityLoops,
       cavitySections: envelope.sections,
@@ -748,6 +775,7 @@ export interface MoldPackage {
   plateDim: [number, number, number];
   ports: PortsPlan;
   clampPlan: ClampPlan;
+  zeroClip: MeshArrays | null;
   siliconeMl: number;
   cavityLoops: Loops;
   cavitySections: { height: number; loops: Loops }[];

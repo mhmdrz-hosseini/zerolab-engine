@@ -1,13 +1,13 @@
-// smoke:clamps — V0.5 manufacturing-reliability layer, commit-1 scope:
-// deterministic clamp-station planning on the frozen seam rail + package
-// metadata emission. Synthetic rail bands (no full mold generation) so it
-// runs in seconds. Acceptance items that need ZeroClip geometry (watertight
-// clip mesh, no jacket collision) land in commit 2.
+// smoke:clamps — V0.5 manufacturing-reliability layer, commits 1–2 scope:
+// deterministic clamp-station planning on the frozen seam rail, ZeroClip
+// geometry + seated acceptance, and package metadata emission. Synthetic rail
+// bands (no full mold generation) so it runs in seconds.
 import { loadManifold } from '../src/engine/manifoldLoader';
-import { planClampStations, CLAMP } from '../src/engine/clamps';
+import { CLAMP, buildZeroClip, planClampStations, validateZeroClip } from '../src/engine/clamps';
 import { buildPrintFiles } from '../src/engine/export';
+import { cleanExportMesh } from '../src/engine/clean';
 import { instanceToMeshArrays } from '../src/engine/offset';
-import type { CS, MoldFrame } from '../src/engine/split';
+import { prismOnPull, type CS, type MoldFrame } from '../src/engine/split';
 import type { PortSpec } from '../src/engine/ports';
 
 let failures = 0;
@@ -84,29 +84,73 @@ check('crown end clearance respected', trimmed.stations.every((s) => s.position[
 const tiny = planClampStations({ railSection: band(5.5, 4), axis: 'X', frame });
 check('short rail degrades to warning', !!tiny.warning && tiny.stations.length === 0, tiny.warning ?? 'no warning');
 
-// --- 6. package metadata: fastening block + assembly guidance ---
+// --- 6. ZeroClip geometry: seated build, acceptance, press-volume window ---
+const PULL: [number, number, number] = [1, 0, 0]; // pull = X matches the frame
+const station0 = planA.stations[0];
+const csCtorT = csCtor as unknown as { ofPolygons(poly: number[][][], fillRule?: string): CS };
+const clipA = buildZeroClip({ csCtor: csCtorT, station: station0, pull: PULL });
+const clipB = buildZeroClip({ csCtor: csCtorT, station: station0, pull: PULL });
+const clipArr = instanceToMeshArrays(clipA);
+const aud = cleanExportMesh(clipArr).audit;
+check('clip mesh clean (watertight, 1 component, no degenerates)',
+  aud.watertight && aud.components === 1 && aud.degenerateTris === 0 && aud.zeroVolumeComponents === 0,
+  `tris ${aud.tris}, comps ${aud.components}, degen ${aud.degenerateTris}, vol ${aud.volumeCm3} cm³`);
+const bbClip = (() => {
+  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < clipArr.vertProperties.length / 3; i++)
+    for (let k = 0; k < 3; k++) {
+      const x = clipArr.vertProperties[i * 3 + k];
+      if (x < min[k]) min[k] = x;
+      if (x > max[k]) max[k] = x;
+    }
+  return { min, dim: [max[0] - min[0], max[1] - min[1], max[2] - min[2]] };
+})();
+check('clip pull extent = rail stack + jaw arms', Math.abs(bbClip.dim[0] - 2 * (2.5 + CLAMP.clipLegTMm - CLAMP.clipInterferenceMm / 2)) < 0.4,
+  `pull extent ${bbClip.dim[0].toFixed(2)} mm (expected ${((2.5 + CLAMP.clipLegTMm - CLAMP.clipInterferenceMm / 2) * 2).toFixed(2)})`);
+check('clip tangent extent = clip width + closing fillet growth', Math.abs(Math.max(bbClip.dim[1], bbClip.dim[2]) - CLAMP.clipWidthMm) < 1.2,
+  `max transverse extent ${Math.max(bbClip.dim[1], bbClip.dim[2]).toFixed(2)} mm (18 mm + ≤1 mm from the r2 root-fillet closing)`);
+check('clip build deterministic', Math.abs(clipA.volume() - clipB.volume()) < 1e-6, `vol ${clipA.volume().toFixed(2)} mm³`);
+
+// seat the clip against the synthetic rail band solid (the ring extruded ±2.5 along pull)
+const bandSolid = prismOnPull(rail, 0, -2.5, 2.5);
+const seat = validateZeroClip({ clip: clipA, jacket: bandSolid });
+check('seated clip engages rail within the designed press volume', seat.ok && seat.pressVolumeMm3 > 0.5 && seat.pressVolumeMm3 < 12,
+  seat.ok ? `press ${seat.pressVolumeMm3.toFixed(2)} mm³ (designed ≈ 2 × 1.5 × 18 × 0.15 ≈ 8 mm³)` : seat.reason ?? 'failed');
+// the clip must never reach the wall: it stops ≥5 mm short of the band's inner boundary
+const wallProxy = prismOnPull(band(5.5, 4), 0, -2.5, 2.5); // inner ring segment stands in for the jacket wall
+const wallHit = clipA.intersect(wallProxy);
+const wallVol = wallHit.volume();
+wallHit.delete();
+check('clip clears the jacket wall', wallVol < 0.5, `wall overlap ${wallVol.toFixed(3)} mm³`);
+
+// --- 7. package metadata: fastening block + assembly guidance + 04_hardware ---
 const cube = instanceToMeshArrays(mod.Manifold.cube([10, 10, 10]));
 const { files } = buildPrintFiles({
   masterBase: cube,
   parts: { jacketA: cube, jacketB: cube, siliconeSkin: cube },
   info: {
     name: 'clamp_smoke', createdAt: new Date().toISOString(),
-    params: { gap: 6, wall: 5, clearance: 0.35 },
+    params: { gap: 6, wall: 5, clearance: 0.35, clampMode: 'printed' },
     axis: 'X', siliconeMl: 1, extraction: { A: 5, B: 5 },
     jacketDim: [10, 10, 10], plateDim: [10, 10, 10],
     warnings: [], checks: [], crown: null, ventCount: 0,
     fastening: {
-      mode: 'binder', clipCount: planA.stations.length,
+      mode: 'printed', clipCount: planA.stations.length,
       usableRailMm: planA.usableRailMm, pitchMm: planA.pitchMm, stations: planA.stations,
     },
+    zeroClip: clipArr,
   },
 });
 const project = JSON.parse(new TextDecoder().decode(files['pourbox_clamp_smoke/project.json']));
-check('project.json carries fastening', project.fastening?.mode === 'binder' && project.fastening?.clipCount === planA.stations.length
+check('project.json carries fastening', project.fastening?.mode === 'printed' && project.fastening?.clipCount === planA.stations.length
   && project.fastening?.binderClipCompatible === true && Array.isArray(project.fastening?.stations),
   `mode ${project.fastening?.mode}, ${project.fastening?.clipCount} stations`);
+check('04_hardware/zero_clip.stl exported', !!files['pourbox_clamp_smoke/04_hardware/zero_clip.stl'], `${(files['pourbox_clamp_smoke/04_hardware/zero_clip.stl']?.length ?? 0)} bytes`);
+const profileJson = JSON.parse(new TextDecoder().decode(files['pourbox_clamp_smoke/print_profile.json']));
+check('print_profile has the ZeroClip entry', (profileJson.profiles?.zero_clip?.material ?? '').startsWith('PETG') && /none/i.test(profileJson.profiles?.zero_clip?.support ?? ''),
+  `material ${profileJson.profiles?.zero_clip?.material}, support ${profileJson.profiles?.zero_clip?.support}`);
 const assembly = new TextDecoder().decode(files['pourbox_clamp_smoke/assembly.md']);
-check('assembly.md names the clip plan', assembly.includes(`${planA.stations.length} clamp stations`), 'hardware section updated');
+check('assembly.md names the clip plan', assembly.includes(`${planA.stations.length} ZeroClips`), 'hardware section updated');
 
 console.log(failures === 0 ? '\nSMOKE:CLAMPS PASS' : `\nSMOKE:CLAMPS FAIL (${failures})`);
 process.exit(failures === 0 ? 0 : 1);

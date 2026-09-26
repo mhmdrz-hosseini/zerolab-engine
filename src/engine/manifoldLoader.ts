@@ -22,6 +22,10 @@ export interface ManifoldInstance {
   boundingBox(): { min: number[]; max: number[] };
   translate(x: number, y?: number, z?: number): ManifoldInstance;
   rotate(x?: number, y?: number, z?: number): ManifoldInstance;
+  /** 4×4 affine, column-major: consecutive groups of 4 are the x/y/z image
+   *  axes, then the translation (verified against the kernel: a basis-as-rows
+   *  layout maps p' = n·x + u·y + t·z + T). */
+  transform(m: number[]): ManifoldInstance;
   delete(): void;
   // boolean ops
   add(other: ManifoldInstance): ManifoldInstance;

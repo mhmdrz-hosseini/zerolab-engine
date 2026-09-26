@@ -21,6 +21,7 @@ export interface PackageInfo {
   crown: { u: number; v: number } | null;
   ventCount: number;
   fastening?: FasteningInfo;
+  zeroClip?: MeshArrays | null; // seated ZeroClip geometry — exported once, printed N×
   clearanceBand?: { requestedGap: number; min: number; p10: number; p50: number; p90: number; withinBand: boolean };
   printability?: Record<string, {
     bedAreaMm2: number; overhangAreaMm2: number; layerStep: number; layers: number;
@@ -63,6 +64,10 @@ export function buildPrintFiles(deps: {
     { name: 'master base', file: '01_master/master_base.stl', mesh: masterMesh, note: 'doll + fused base plate — print plate-down as one piece' },
     ...jacketDefs,
     { name: 'silicone skin preview', file: '03_preview/silicone_skin.stl', mesh: parts.siliconeSkin, note: 'NOT printed — this is the mold the silicone will become' },
+    ...(info.zeroClip ? [{
+      name: `zero clip ×${info.fastening?.clipCount ?? '?'}`, file: '04_hardware/zero_clip.stl', mesh: info.zeroClip,
+      note: 'print N of these in PETG, flat on the bed as exported — spring onto the rail stations; never use supports',
+    }] : []),
   ];
 
   // export mesh gate (hard): clean every part, then require a watertight,
@@ -134,7 +139,9 @@ Split axis: **±${info.axis}** · Silicone needed: **≈ ${info.siliconeMl.toFix
 
 ## Hardware
 ${info.fastening && info.fastening.stations.length > 0
-    ? `- Clip plan: **${info.fastening.stations.length} clamp stations** evenly spaced on the external seam rail (usable rail ≈ ${info.fastening.usableRailMm.toFixed(0)} mm, spacing ≈ ${info.fastening.pitchMm.toFixed(0)} mm) — one 25–32 mm binder clip per station, flat land against the rail. Station coordinates ship in \`project.json → fastening.stations\`.`
+    ? (info.zeroClip
+      ? `- Fastening: **${info.fastening.mode}** — print **${info.fastening.clipCount} ZeroClips** (\`04_hardware/zero_clip.stl\`, PETG, flat on the bed) and spring one onto each station of the external seam rail${info.fastening.mode === 'hybrid' ? '; binder clips may fill any gap between stations' : ''}. Station coordinates ship in \`project.json → fastening.stations\`.`
+      : `- Clip plan: **${info.fastening.stations.length} clamp stations** evenly spaced on the external seam rail (usable rail ≈ ${info.fastening.usableRailMm.toFixed(0)} mm, spacing ≈ ${info.fastening.pitchMm.toFixed(0)} mm) — one 25–32 mm binder clip per station, flat land against the rail. Station coordinates ship in \`project.json → fastening.stations\`.`)
     : '- 6–10 binder clips sized to the 5 mm seam rail stack; removable seam/base sealant'}
 - Removable seam/base sealant${info.fastening?.warning ? `\n- ⚠ ${info.fastening.warning}` : ''}
 
@@ -215,6 +222,19 @@ ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).
         print: false,
         note: 'DO NOT PRINT — this STL is the visualization of the silicone the cavity will become.',
       },
+      ...(info.zeroClip ? {
+        zero_clip: {
+          orientation: 'flat on the bed, as exported — never stand it up',
+          material: 'PETG (PLA only as a prototype — repeated flexing fatigues PLA)',
+          nozzle_mm: 0.4,
+          layer_height_mm: 0.2,
+          perimeters: '4–5',
+          infill_percent: 100,
+          support: 'none — the profile is support-free flat; supports would ruin the spring',
+          quantity: info.fastening?.clipCount ?? null,
+          fit_note: 'jaws grip the 5 mm rail stack with 0.3 mm total interference — if seating is impossible or slack, recalibrate via the fit coupon',
+        },
+      } : {}),
     },
   };
 

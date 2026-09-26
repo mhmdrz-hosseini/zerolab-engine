@@ -53,6 +53,7 @@ export function GeneratePanel() {
   const [wall, setWall] = useState<WallId>('standard');
   const [ribs, setRibs] = useState(false);
   const [material, setMaterial] = useState<'silicone' | 'hotWax'>('silicone');
+  const [clampMode, setClampMode] = useState<'binder' | 'printed' | 'hybrid'>('binder');
 
   if (!report) return null;
   const p = PRESETS.find((x) => x.id === preset)!;
@@ -65,6 +66,7 @@ export function GeneratePanel() {
     gapWindow: envelope === 'tight' ? Math.max(1.5, p.gap / 2) : undefined,
     ribs,
     material,
+    clampMode,
   };
   const busy = phase === 'busy';
 
@@ -109,6 +111,16 @@ export function GeneratePanel() {
         <button className={`chip${material === 'hotWax' ? ' on' : ''}`} onClick={() => setMaterial('hotWax')} disabled={busy} title="jacket stays on while pouring hot wax — print jackets in PETG/ASA">
           Hot wax (PETG)
         </button>
+      </div>
+      <div className="chips" title="Printed hardware (experimental): ZeroClips print in PETG and spring onto the seam-rail stations; defaults stay binder until physical coupons pass">
+        <span className="hint dim" style={{ alignSelf: 'center' }}>Hardware:</span>
+        {([['binder', 'Binder clips', 'legacy fastening — 25–32 mm binder clips on the rail stations'],
+           ['printed', 'ZeroClips', 'printed PETG spring clips at every station (experimental)'],
+           ['hybrid', 'Hybrid', 'ZeroClips at stations + binder clips as filler (experimental)']] as const).map(([id, label, hint]) => (
+          <button key={id} className={`chip${clampMode === id ? ' on' : ''}`} onClick={() => setClampMode(id)} disabled={busy} title={hint}>
+            {label}
+          </button>
+        ))}
       </div>
       <button className="btn primary wide" onClick={() => generate(params)} disabled={busy}>
         {result ? 'Regenerate' : 'Generate silicone skin'}
@@ -201,7 +213,12 @@ export function GeneratePanel() {
           ) : (
             <button className="btn primary wide" disabled>Export blocked — hard gate failed</button>
           )}
-          <div className="hint dim">Hardware: 4× M3×12 + hex nuts. Package: STL set, project.json, assembly sheet.</div>
+          <div className="hint dim">
+            Hardware: {result.fastening
+              ? `${result.fastening.clipCount} clamp stations · mode ${result.fastening.mode}${result.fastening.warning ? ` · ⚠ ${result.fastening.warning}` : ''}`
+              : '6–10 binder clips (25–32 mm) on the seam rail'}
+            . Package: STL set, project.json, assembly sheet.
+          </div>
         </div>
       )}
     </section>

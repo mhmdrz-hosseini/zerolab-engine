@@ -50,6 +50,8 @@ const GAP_WINDOW = arg('gap-window') ? Number(arg('gap-window')) : undefined;
 const RIBS = has('ribs');
 const MATERIAL = (arg('material') as 'silicone' | 'hotWax' | undefined) ?? undefined;
 const PANELS = Number(arg('panels') ?? 2) === 3 ? 3 as const : 2 as const;
+const CLAMP_MODE_RAW = arg('clamp');
+const CLAMP_MODE = CLAMP_MODE_RAW === 'printed' || CLAMP_MODE_RAW === 'hybrid' ? CLAMP_MODE_RAW : 'binder' as const;
 const VERTICAL = arg('vertical') as Axis | undefined;
 const SPLIT = arg('split') as Axis | undefined;
 const NO_ZIP = has('no-zip');
@@ -147,7 +149,7 @@ console.log(`${el()} ranked axes: ${rankedAxes.join(' → ')}`);
 // --- generate ---
 const pkg = await generateMoldPackage({
   mod, master: full, grid,
-  params: { gap: GAP, wall: WALL, clearance: CLEARANCE, verticalAxis: VERTICAL, splitAxis: SPLIT, gapWindow: GAP_WINDOW, ribs: RIBS, material: MATERIAL, panels: PANELS },
+  params: { gap: GAP, wall: WALL, clearance: CLEARANCE, verticalAxis: VERTICAL, splitAxis: SPLIT, gapWindow: GAP_WINDOW, ribs: RIBS, material: MATERIAL, panels: PANELS, clampMode: CLAMP_MODE },
   rankedAxes, ports: false,
   onProgress: (stage) => console.log(`${el()} ${stage}`),
 });
@@ -206,7 +208,7 @@ for (const [name, r] of Object.entries(printability)) {
   console.log(`  ${name}: bed ${r.bedAreaMm2} mm² · unsupported @45° ${r.overhangAreaMm2} mm²` +
     (r.worstBands.length ? ` · worst ${r.worstBands[0].areaMm2} mm² @ ${r.worstBands[0].zLo}–${r.worstBands[0].zHi} mm` : ''));
 }
-console.log(`${el()} clip plan: ${pkg.clampPlan.stations.length} stations (usable rail ${pkg.clampPlan.usableRailMm} mm, pitch ${pkg.clampPlan.pitchMm} mm)${pkg.clampPlan.warning ? ` — ${pkg.clampPlan.warning}` : ''}`);
+console.log(`${el()} clip plan: ${pkg.clampPlan.stations.length} stations (usable rail ${pkg.clampPlan.usableRailMm} mm, pitch ${pkg.clampPlan.pitchMm} mm, mode ${pkg.clampPlan.mode})${pkg.zeroClip ? ' · ZeroClip geometry built' : ''}${pkg.clampPlan.warning ? ` — ${pkg.clampPlan.warning}` : ''}`);
 
 // --- package ---
 const bbOf = (m: MeshArrays) => {
@@ -242,13 +244,14 @@ try {
       crown: null,
       ventCount: pkg.ports.vents.length,
       fastening: {
-        mode: 'binder',
+        mode: pkg.clampPlan.mode,
         clipCount: pkg.clampPlan.stations.length,
         usableRailMm: pkg.clampPlan.usableRailMm,
         pitchMm: pkg.clampPlan.pitchMm,
         stations: pkg.clampPlan.stations,
         ...(pkg.clampPlan.warning ? { warning: pkg.clampPlan.warning } : {}),
       },
+      zeroClip: pkg.zeroClip,
       clearanceBand: gates.clearanceBand,
       printability,
     },

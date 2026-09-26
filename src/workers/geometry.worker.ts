@@ -203,6 +203,7 @@ async function generate(params: GenerateParams): Promise<void> {
       gap, wall, clearance: params.clearance,
       verticalAxis: params.verticalAxis, splitAxis: params.splitAxis,
       gapWindow: params.gapWindow, ribs: params.ribs, material: params.material, panels: params.panels,
+      clampMode: params.clampMode,
     },
     rankedAxes,
     ports: false,
@@ -268,9 +269,10 @@ async function generate(params: GenerateParams): Promise<void> {
       jacketA: pkg.pieces.jacketA, jacketB: pkg.pieces.jacketB, basePlate: pkg.pieces.basePlate,
       siliconeSkin: pkg.pieces.skin,
       ...(is3 ? { jacketB1: pkg.pieces.jacketB1!, jacketB2: pkg.pieces.jacketB2! } : {}),
+      ...(pkg.zeroClip ? { zeroClip: pkg.zeroClip } : {}),
     },
     siliconeMl: pkg.siliconeMl, outerDim: pkg.jacketDim,
-    params: { gap, wall, clearance: params.clearance, gapWindow: params.gapWindow, ribs: params.ribs, material: params.material, panels: pkg.panels },
+    params: { gap, wall, clearance: params.clearance, gapWindow: params.gapWindow, ribs: params.ribs, material: params.material, panels: pkg.panels, clampMode: params.clampMode },
     axis: pkg.axis,
     elapsedMs: Date.now() - t0,
     extraction: {
@@ -285,7 +287,7 @@ async function generate(params: GenerateParams): Promise<void> {
     ports: { crown: null, vents: pkg.ports.vents.length },
     clearanceBand: gateReport.clearanceBand,
     fastening: {
-      mode: 'binder',
+      mode: pkg.clampPlan.mode,
       clipCount: pkg.clampPlan.stations.length,
       usableRailMm: pkg.clampPlan.usableRailMm,
       pitchMm: pkg.clampPlan.pitchMm,
@@ -338,6 +340,7 @@ async function exportPackage(): Promise<void> {
       crown: r.ports.crown,
       ventCount: r.ports.vents,
       fastening: r.fastening,
+      zeroClip: r.parts.zeroClip ?? null,
     },
   });
   const blob = zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.byteLength) as ArrayBuffer;

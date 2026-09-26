@@ -52,17 +52,23 @@ export interface GenerateParams {
   material?: 'silicone' | 'hotWax'; // casting material — drives the material
                        // guidance (PLA fine for room-temp RTV; PETG/ASA for hot wax)
   panels?: 2 | 3;      // 3 = multi-panel jacket (heavy half sub-split ±depth)
+  clampMode?: 'binder' | 'printed' | 'hybrid'; // seam fastening: binder clips
+                       // (default, legacy), printed ZeroClips on the rail
+                       // stations, or printed at stations + binder as filler
 }
 
 // V0.5 manufacturing-reliability layer: clip placement on the frozen seam rail.
 export interface ClampStation {
   position: [number, number, number]; // clip landing center on the rail's outer face, parting plane
+  normal: [number, number, number];   // outward rail-face normal at the station (unit)
+  bulgeMm: number;                    // max outward deviation of the rail's outer edge from the
+                                      // tangent line within the clip window (curvature + ratchet steps)
   railThickness: number;              // measured radial width of the rail band here (mm)
   index: number;
 }
 
 export interface FasteningInfo {
-  mode: 'binder';        // commit 2 widens to 'binder' | 'printed' | 'hybrid'
+  mode: 'binder' | 'printed' | 'hybrid';
   clipCount: number;
   usableRailMm: number;
   pitchMm: number;

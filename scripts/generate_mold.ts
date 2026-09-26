@@ -4,7 +4,7 @@
 //
 // Usage:
 //   npx tsx scripts/generate_mold.ts --input <model.stl|obj|glb> [--gap 6]
-//     [--wall 5] [--clearance 0.25] [--out OUTPUT/dir] [--vertical X|Y|Z]
+//     [--wall 5] [--clearance 0.35] [--out OUTPUT/dir] [--vertical X|Y|Z]
 //     [--split X|Y|Z] [--size <mm>] [--no-zip]
 //
 // The master is expected in millimetres. Models outside the 20–300 mm band are
@@ -39,7 +39,9 @@ if (!input) {
 }
 const GAP = Number(arg('gap') ?? 6);
 const WALL = Number(arg('wall') ?? 5);
-const CLEARANCE = Number(arg('clearance') ?? 0.25);
+// Joint clearance — audit §12: 0.25 is a calibrated-machine value; Standard
+// FDM default is 0.35 (ladder: resin 0.15 / calibrated 0.25 / 0.35 / loose 0.45)
+const CLEARANCE = Number(arg('clearance') ?? 0.35);
 const OUT_DIR = arg('out') ?? 'OUTPUT/generated_mold';
 const SIZE = arg('size') ? Number(arg('size')) : undefined;
 const VERTICAL = arg('vertical') as Axis | undefined;

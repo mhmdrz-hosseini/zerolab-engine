@@ -9,6 +9,16 @@ const PRESETS = [
 ] as const;
 type PresetId = (typeof PRESETS)[number]['id'];
 
+// Joint-fit ladder (printability audit §12): 0.25 mm is only safe on a
+// calibrated machine — a 160 mm tongue accumulates dimensional error.
+const FITS = [
+  { id: 'resin', label: 'Resin', wall: 2, clearance: 0.15, hint: '0.15 mm joint clearance' },
+  { id: 'calibrated', label: 'Calibrated FDM', wall: 5, clearance: 0.25, hint: '0.25 mm joint clearance' },
+  { id: 'standard', label: 'Standard FDM', wall: 5, clearance: 0.35, hint: '0.35 mm joint clearance' },
+  { id: 'loose', label: 'Loose FDM', wall: 5, clearance: 0.45, hint: '0.45 mm joint clearance' },
+] as const;
+type FitId = (typeof FITS)[number]['id'];
+
 export function GeneratePanel() {
   const report = useStore((s) => s.report);
   const result = useStore((s) => s.result);
@@ -20,14 +30,15 @@ export function GeneratePanel() {
   const toggleLayer = useStore((s) => s.toggleLayer);
   const phase = useStore((s) => s.phase);
   const [preset, setPreset] = useState<PresetId>('standard');
-  const [printer, setPrinter] = useState<'fdm' | 'resin'>('fdm');
+  const [fit, setFit] = useState<FitId>('standard');
 
   if (!report) return null;
   const p = PRESETS.find((x) => x.id === preset)!;
+  const f = FITS.find((x) => x.id === fit)!;
   const params: GenerateParams = {
     gap: p.gap,
-    wall: printer === 'resin' ? 2 : p.wall,
-    clearance: printer === 'resin' ? 0.15 : 0.25,
+    wall: f.wall,
+    clearance: f.clearance,
   };
   const busy = phase === 'busy';
 
@@ -42,8 +53,11 @@ export function GeneratePanel() {
         ))}
       </div>
       <div className="chips">
-        <button className={`chip${printer === 'fdm' ? ' on' : ''}`} onClick={() => setPrinter('fdm')} disabled={busy}>FDM printer</button>
-        <button className={`chip${printer === 'resin' ? ' on' : ''}`} onClick={() => setPrinter('resin')} disabled={busy}>Resin printer</button>
+        {FITS.map((x) => (
+          <button key={x.id} className={`chip${fit === x.id ? ' on' : ''}`} onClick={() => setFit(x.id)} disabled={busy} title={x.hint}>
+            {x.label}
+          </button>
+        ))}
       </div>
       <button className="btn primary wide" onClick={() => generate(params)} disabled={busy}>
         {result ? 'Regenerate' : 'Generate silicone skin'}

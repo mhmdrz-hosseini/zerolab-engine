@@ -30,6 +30,12 @@ export const V02 = {
   taperExtra: 5,     // cavity = shadow ⊕ (gap + taperExtra) at the plate, ⊕0 at the crown (ref draft ≈ 4–5°)
   tongue: 2,         // A→B alignment lip at the parting plane
   ventR: 1.25,
+  // FDM joint-fit features (printability audit 2026-09-26 §12/§13):
+  leadFlare: 0.5,    // groove-mouth widening — self-jigging lead-in
+  leadDepth: 0.8,    // axial extent of that flare
+  tipTaper: 0.6,     // stepped shrink of the tongue tip (eases entry)
+  footReliefH: 0.5,  // elephant-foot relief band on bed-contact faces
+  footReliefC: 0.2,  // …and its depth (Prusa-style 0.2 mm compensation, in geometry)
 };
 
 export interface CS {
@@ -294,6 +300,26 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
     if (v === 1) localRail = track(track(rail.rotate(90, 0, 0)).rotate(0, 0, 90));
     plateOutlineCS = track(plateOutlineCS.add(track(track(localRail.project()).offset(0.3, 'Round', 2, 32))));
 
+    // Elephant-foot relief (audit §13): the bottom 0.5 mm of every bed-contact
+    // face steps inward (0.2 then 0.1 mm) so first-layer squish cannot swell
+    // the jacket past its seating/mating surfaces. Built as removal rings whose
+    // outer boundary sits 0.5 mm in open air — never re-cutting a kept face.
+    {
+      let jacketV = jacket;
+      if (v === 0) jacketV = track(track(jacket.rotate(0, -90, 0)).rotate(0, 0, -90));
+      if (v === 1) jacketV = track(track(jacket.rotate(90, 0, 0)).rotate(0, 0, 90));
+      const s0 = track(jacketV.slice(frame.base + 0.05));
+      const s1 = track(jacketV.slice(frame.base + V02.footReliefH * 0.5 + 0.05));
+      const cut0CS = track(track(s0.offset(0.5, 'Round', 2, 32))
+        .subtract(track(s0.offset(-V02.footReliefC, 'Round', 2, 32))).simplify(1e-4));
+      const cut1CS = track(track(s1.offset(0.5, 'Round', 2, 32))
+        .subtract(track(s1.offset(-V02.footReliefC / 2, 'Round', 2, 32))).simplify(1e-4));
+      const cut0 = track(prismOnVert(cut0CS, v, frame.base, frame.base + V02.footReliefH * 0.5));
+      const cut1 = track(prismOnVert(cut1CS, v, frame.base + V02.footReliefH * 0.5, frame.base + V02.footReliefH));
+      jacket = track(track(jacket.subtract(cut0)).subtract(cut1));
+      if (!isOk(jacket)) throw new Error('kernel rejected the elephant-foot relief');
+    }
+
     progress('Splitting ±' + axis + ' at the mid-plane', 0.5);
     const halfA = track(jacket.trimByPlane([...pv], frame.mid));
     const halfB = track(jacket.trimByPlane([...pv].map((n) => -n), -frame.mid));
@@ -307,14 +333,34 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
     if (p === 1) localJacket = track(track(jacket.rotate(90, 0, 0)).rotate(0, 0, 90));
     const seam = track(localJacket.slice(frame.mid));
     const inset = Math.max(0.65, wall * 0.28);
-    const tongueCS = track(seam.offset(-inset, 'Round', 2, 32).simplify(1e-4));
     const depth = Math.min(V02.tongue, wall * 0.65);
-    const tongue = track(prismOnPull(tongueCS, p, frame.mid - depth, frame.mid + 0.2));
+    const tongueCS = track(seam.offset(-inset, 'Round', 2, 32).simplify(1e-4));
+    // Stepped tip taper (audit §12): the last `tipTaper` mm of the lip shrink
+    // in two 0.08 mm steps so the tongue finds the flared groove mouth instead
+    // of butting against it. Rings that pinch empty on thin walls are skipped.
+    const tipH = Math.min(V02.tipTaper, depth * 0.45);
+    const tipHighCS = track(tongueCS.offset(-0.08, 'Round', 2, 32).simplify(1e-4));
+    const tipLowCS = track(tongueCS.offset(-0.16, 'Round', 2, 32).simplify(1e-4));
+    const mainTongue = track(prismOnPull(tongueCS, p, frame.mid - depth + tipH, frame.mid + 0.2));
+    let tongue = mainTongue;
+    if (tipHighCS.area() > 1e-6) {
+      tongue = track(tongue.add(track(prismOnPull(tipHighCS, p, frame.mid - depth + tipH * 0.5, frame.mid - depth + tipH))));
+    }
+    if (tipLowCS.area() > 1e-6) {
+      tongue = track(tongue.add(track(prismOnPull(tipLowCS, p, frame.mid - depth, frame.mid - depth + tipH * 0.5))));
+    }
     const grooveCS = track(tongueCS.offset(params.clearance, 'Round', 2, 32).simplify(1e-4));
     const groove = track(prismOnPull(grooveCS, p, frame.mid - depth - params.clearance, frame.mid + 0.01));
+    // Lead-in flare (audit §12): the groove mouth widens for the first
+    // `leadDepth` mm. Kept strictly inside the wall section (never re-cutting
+    // the cavity face): flare ≤ inset − clearance − 0.1.
+    const flare = Math.min(V02.leadFlare, Math.max(0, inset - params.clearance - 0.1));
+    const flareCS = track(tongueCS.offset(params.clearance + flare, 'Round', 2, 32).simplify(1e-4));
+    const flarePrism = track(prismOnPull(flareCS, p, frame.mid - Math.min(V02.leadDepth, depth * 0.6), frame.mid + 0.01));
     if (tongue.volume() < 0.1) throw new Error('Joint is empty: increase the wall thickness');
     let A = track(halfA.add(tongue));
     let B = track(halfB.subtract(groove));
+    B = track(B.subtract(flarePrism));
     if (!isOk(A) || !isOk(B)) throw new Error('Kernel rejected the tongue/groove features');
     const overlap = track(A.intersect(B));
     if (overlap.volume() > 0.01) throw new Error('Joint halves interfere');

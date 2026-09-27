@@ -35,6 +35,8 @@ interface StoreState {
   preview: MeshArrays | null;
   result: GenerateResult | null;
   layers: Layers;
+  explode: number;      // 0..1 exploded-view separation along the pull axis
+  realView: boolean;    // realistic opaque render vs schematic x-ray
   exportUrl: string | null;
   exportName: string | null;
   couponUrl: string | null;
@@ -46,6 +48,8 @@ interface StoreState {
   exportPkg: () => void;
   requestCoupon: () => void;
   toggleLayer: (k: keyof Layers) => void;
+  setExplode: (t: number) => void;
+  setRealView: (on: boolean) => void;
   reset: () => void;
 }
 
@@ -65,6 +69,7 @@ function getWorker(): Worker {
         phase: 'ready',
         progress: null,
         result: msg.result,
+        explode: 0,
         layers: { master: true, skin: true, outer: false, jacketA: false, jacketB: false, jacketB1: false, jacketB2: false, plate: false },
       }));
     } else if (msg.type === 'failure') {
@@ -110,6 +115,8 @@ export const useStore = create<StoreState>((set) => ({
   couponName: null,
   couponNotes: [],
   layers: { master: true, skin: true, outer: false, jacketA: false, jacketB: false, jacketB1: false, jacketB2: false, plate: false },
+  explode: 0,
+  realView: false,
   ingest: (file) => {
     void file.arrayBuffer().then((bytes) => {
       useStore.getState().ingestBytes(bytes, file.name);
@@ -132,5 +139,7 @@ export const useStore = create<StoreState>((set) => ({
     getWorker().postMessage({ type: 'coupon' });
   },
   toggleLayer: (k) => set((s) => ({ layers: { ...s.layers, [k]: !s.layers[k] } })),
-  reset: () => set({ phase: 'idle', progress: null, error: null, failure: null, report: null, preview: null, result: null, exportUrl: null, exportName: null, couponUrl: null, couponName: null, couponNotes: [], layers: { master: true, skin: true, outer: false, jacketA: false, jacketB: false, jacketB1: false, jacketB2: false, plate: false } }),
+  setExplode: (t2) => set({ explode: t2 }),
+  setRealView: (on) => set({ realView: on }),
+  reset: () => set({ phase: 'idle', progress: null, error: null, failure: null, report: null, preview: null, result: null, exportUrl: null, exportName: null, couponUrl: null, couponName: null, couponNotes: [], explode: 0, realView: false, layers: { master: true, skin: true, outer: false, jacketA: false, jacketB: false, jacketB1: false, jacketB2: false, plate: false } }),
 }));

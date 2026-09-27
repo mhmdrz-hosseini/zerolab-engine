@@ -6,6 +6,7 @@ import { ImportPanel } from './ui/ImportPanel';
 import { Viewer } from './ui/Viewer';
 import { useStore } from './state/store';
 import { applyDocumentLang, te, useT } from './i18n';
+import { AXES } from './engine/types';
 
 export default function App() {
   const lang = useStore((s) => s.lang);
@@ -18,6 +19,10 @@ export default function App() {
   const preview = useStore((s) => s.preview);
   const result = useStore((s) => s.result);
   const layers = useStore((s) => s.layers);
+  const explode = useStore((s) => s.explode);
+  const setExplode = useStore((s) => s.setExplode);
+  const realView = useStore((s) => s.realView);
+  const setRealView = useStore((s) => s.setRealView);
   const t = useT();
 
   useEffect(() => {
@@ -53,14 +58,14 @@ export default function App() {
   const gridY = -(dim[1] / 2) - 4;
 
   const layerDefs: LayerDef[] = [];
-  if (preview && layers.master) layerDefs.push({ mesh: preview, color: '#9fb6c6', opacity: failure ? 0.92 : 0.5, order: 2, trap: failure?.trapFlags });
-  if (result && layers.skin) layerDefs.push({ mesh: result.parts.siliconeSkin, color: '#5ec9a8', opacity: 0.45, order: 3 });
-  if (result && layers.jacketA) layerDefs.push({ mesh: result.parts.jacketA, color: '#7fa8d6', opacity: 0.4, order: 4 });
-  if (result && layers.jacketB) layerDefs.push({ mesh: result.parts.jacketB, color: '#d686a2', opacity: 0.4, order: 4 });
-  if (result && layers.jacketB1) layerDefs.push({ mesh: result.parts.jacketB1, color: '#7fcbb0', opacity: 0.4, order: 4 });
-  if (result && layers.jacketB2) layerDefs.push({ mesh: result.parts.jacketB2, color: '#d6b47f', opacity: 0.4, order: 4 });
-  if (result && layers.plate) layerDefs.push({ mesh: result.parts.basePlate, color: '#c9b391', opacity: 0.9, order: 1 });
-  if (result && layers.outer) layerDefs.push({ mesh: result.parts.jacketOuter, color: '#a9b6c4', opacity: 0.14, order: 0 });
+  if (preview && layers.master) layerDefs.push({ id: 'master', mesh: preview, color: '#9fb6c6', opacity: failure ? 0.92 : 0.5, order: 2, trap: failure?.trapFlags });
+  if (result && layers.skin) layerDefs.push({ id: 'siliconeSkin', mesh: result.parts.siliconeSkin, color: '#5ec9a8', opacity: 0.45, order: 3 });
+  if (result && layers.jacketA) layerDefs.push({ id: 'jacketA', mesh: result.parts.jacketA, color: '#7fa8d6', opacity: 0.4, order: 4 });
+  if (result && layers.jacketB) layerDefs.push({ id: 'jacketB', mesh: result.parts.jacketB, color: '#d686a2', opacity: 0.4, order: 4 });
+  if (result && layers.jacketB1) layerDefs.push({ id: 'jacketB1', mesh: result.parts.jacketB1, color: '#7fcbb0', opacity: 0.4, order: 4 });
+  if (result && layers.jacketB2) layerDefs.push({ id: 'jacketB2', mesh: result.parts.jacketB2, color: '#d6b47f', opacity: 0.4, order: 4 });
+  if (result && layers.plate) layerDefs.push({ id: 'basePlate', mesh: result.parts.basePlate, color: '#c9b391', opacity: 0.9, order: 1 });
+  if (result && layers.outer && !realView) layerDefs.push({ id: 'jacketOuter', mesh: result.parts.jacketOuter, color: '#a9b6c4', opacity: 0.14, order: 0 });
 
   return (
     <div className="app">
@@ -111,7 +116,49 @@ export default function App() {
       </aside>
         <main className="stage">
         {layerDefs.length > 0 ? (
-          <Viewer layers={layerDefs} center={center} radius={radius} gridY={gridY} />
+          <>
+            <Viewer
+              layers={layerDefs}
+              center={center}
+              radius={radius}
+              gridY={gridY}
+              axis={result?.axis}
+              explode={explode}
+              explodeDist={result ? 0.45 * result.outerDim[AXES.indexOf(result.axis)] : 0}
+              real={realView}
+            />
+            {result && (
+              <div className="stage-bar" dir="ltr">
+                <label>{t('view.explode')}</label>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={Math.round(explode * 100)}
+                  style={{ ['--slider-fill' as never]: `${Math.round(explode * 100)}%` }}
+                  onChange={(e) => {
+                    const v = Number(e.target.value) / 100;
+                    if (v > 0 && explode === 0) {
+                      // first pull: reveal the whole assembly so the separation reads
+                      useStore.setState({
+                        layers: {
+                          master: true, skin: true, outer: false,
+                          jacketA: true, jacketB: true,
+                          jacketB1: !!result.parts.jacketB1, jacketB2: !!result.parts.jacketB2,
+                          plate: true,
+                        },
+                      });
+                    }
+                    setExplode(v);
+                  }}
+                />
+                <div className="seg">
+                  <button className={!realView ? 'on' : ''} onClick={() => setRealView(false)}>{t('view.schematic')}</button>
+                  <button className={realView ? 'on' : ''} onClick={() => setRealView(true)}>{t('view.real')}</button>
+                </div>
+              </div>
+            )}
+          </>
         ) : (
           <div className="empty">
             <div className="empty-title">{t('empty.title')}</div>

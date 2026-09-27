@@ -121,6 +121,9 @@ const en = {
   'gen.fastening.warn': ' · ⚠ {w}',
   'gen.fastening.default': '6–10 binder clips (25–32 mm) on the seam rail',
   'gen.package': 'Package: STL set, project.json, assembly sheet.',
+  'view.explode': 'Exploded view',
+  'view.schematic': 'Schematic',
+  'view.real': 'Real',
 };
 
 export type Key = keyof typeof en;
@@ -237,6 +240,9 @@ const fa: Record<Key, string> = {
   'gen.fastening.warn': ' · ⚠ {w}',
   'gen.fastening.default': 'گیره‌های 6–10 عددی 25–32 میلی‌متری روی ریل درز',
   'gen.package': 'پکیج: ست STL، project.json، برگه‌ی اسمبلی.',
+  'view.explode': 'نمای بازشده',
+  'view.schematic': 'شماتیک',
+  'view.real': 'واقعی',
 };
 
 function interpolate(s: string, vars?: Record<string, string | number>): string {

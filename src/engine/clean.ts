@@ -222,6 +222,22 @@ export function auditMeshArrays(vp: Float32Array, tv: Uint32Array): MeshAudit {
 }
 
 /**
+ * Signed-volume (divergence theorem) of a MeshArrays solid in cm³ — cheap
+ * per-part mass estimates for the size/material panel.
+ */
+export function meshVolumeCm3(m: MeshArrays): number {
+  const vp = m.vertProperties, tv = m.triVerts;
+  let vol6 = 0;
+  for (let t = 0; t < tv.length; t += 3) {
+    const a = tv[t] * 3, b = tv[t + 1] * 3, c = tv[t + 2] * 3;
+    vol6 += vp[a] * (vp[b + 1] * vp[c + 2] - vp[b + 2] * vp[c + 1])
+          + vp[a + 1] * (vp[b + 2] * vp[c] - vp[b] * vp[c + 2])
+          + vp[a + 2] * (vp[b] * vp[c + 1] - vp[b + 1] * vp[c]);
+  }
+  return Math.abs(vol6) / 6 / 1000;
+}
+
+/**
  * Clean an engine-generated mesh for export: quantize-merge at 1 µm, drop
  * collapsed triangles, collapse near slivers, drop zero-volume components
  * (distinct union-find roots are vertex-disjoint by construction, so dropping

@@ -3,6 +3,7 @@
 // Manifold instances). UI state never holds meshes.
 import { buildReport, computeBBox, trappedColumnMask, validateMasterMesh } from '../engine/analyze';
 import { contoursAtLayer } from '../engine/contours';
+import { meshVolumeCm3 } from '../engine/clean';
 import { buildPrintFiles } from '../engine/export';
 import { runGates } from '../engine/gates';
 import { parseGlb } from '../engine/glb';
@@ -161,11 +162,27 @@ async function generate(params: GenerateParams): Promise<void> {
   const m = await ensureMod();
   const t0 = Date.now();
 
+  // masterScale (size-confirm UI): uniformly rescale the as-ingested master;
+  // state.master itself stays untouched so repeated regenerations at different
+  // scales never compound. gap/wall remain absolute mm — everything downstream
+  // (grid, package, gates, printability, export) regenerates consistently.
+  const k = params.masterScale && params.masterScale > 0 ? params.masterScale : 1;
+  const master: MeshArrays = k === 1
+    ? state.master
+    : {
+      vertProperties: (() => {
+        const out = new Float32Array(state!.master.vertProperties.length);
+        for (let i = 0; i < out.length; i++) out[i] = state!.master.vertProperties[i] * k;
+        return out;
+      })(),
+      triVerts: state.master.triVerts,
+    };
+
   post({ type: 'progress', stage: 'Building distance field', pct: 0.05 });
   // V0.2: the grid, package and gates all run on the FULL-RES master — the
   // decimated analysis mesh shrinks pointy features (ears, fingers) by a few
   // mm, which would leave the printed master loose inside its glove
-  const grid = await buildSignedDistanceGrid(state.master, {
+  const grid = await buildSignedDistanceGrid(master, {
     gap, wall, step: 0.75,
     onProgress: (stage, pct) => post({ type: 'progress', stage, pct: 0.05 + pct * 0.55 }),
   });
@@ -199,7 +216,7 @@ async function generate(params: GenerateParams): Promise<void> {
 
   post({ type: 'progress', stage: 'Splitting jacket and simulating extraction', pct: 0.65 });
   const pkg = await generateMoldPackage({
-    mod: m, master: state.master, grid,
+    mod: m, master, grid,
     params: {
       gap, wall, clearance: params.clearance,
       verticalAxis: params.verticalAxis, splitAxis: params.splitAxis,
@@ -238,7 +255,7 @@ async function generate(params: GenerateParams): Promise<void> {
     grid, gap, wall, step: grid.step,
     frame: pkg.frame,
     ports: pkg.ports,
-    master: state.master,
+    master,
     pieceArrays: is3
       ? [pkg.pieces.jacketA, pkg.pieces.jacketB1!, pkg.pieces.jacketB2!, pkg.pieces.basePlate]
       : [pkg.pieces.jacketA, pkg.pieces.jacketB, pkg.pieces.basePlate],
@@ -250,7 +267,7 @@ async function generate(params: GenerateParams): Promise<void> {
   // Preserve the master. The slicer controls infill; sealed CAD hollows can
   // introduce unsupported ceilings and disconnected internal surfaces.
   const extraWarnings: string[] = [];
-  const masterFinal = state.master;
+  const masterFinal = master;
 
   // master_base = (hollowed) doll ∪ fused base plate — V0.2 architecture
   let masterBaseArr = masterFinal;
@@ -276,7 +293,7 @@ async function generate(params: GenerateParams): Promise<void> {
         : {}),
     },
     siliconeMl: pkg.siliconeMl, outerDim: pkg.jacketDim,
-    params: { gap, wall, clearance: params.clearance, gapWindow: params.gapWindow, ribs: params.ribs, material: params.material, panels: pkg.panels, clampMode: params.clampMode, baseLock: params.baseLock },
+    params: { gap, wall, clearance: params.clearance, gapWindow: params.gapWindow, ribs: params.ribs, material: params.material, panels: pkg.panels, clampMode: params.clampMode, baseLock: params.baseLock, masterScale: k },
     axis: pkg.axis,
     elapsedMs: Date.now() - t0,
     extraction: {
@@ -307,6 +324,15 @@ async function generate(params: GenerateParams): Promise<void> {
       plateT: V02.plateT, pull: pkg.axis, mid: pkg.frame.mid,
     }),
   };
+  // per-part volume of everything the user actually prints (mass estimates in
+  // the size panel); preview-only parts (bare master, skin, ghost) excluded
+  const partVolumesCm3: Record<string, number> = {};
+  for (const [name, mesh] of Object.entries(result.parts)) {
+    if (name === 'master' || name === 'siliconeSkin' || name === 'jacketOuter') continue;
+    partVolumesCm3[name] = Number(meshVolumeCm3(mesh).toFixed(1));
+  }
+  result.partVolumesCm3 = partVolumesCm3;
+  result.masterScale = k;
   state.lastResult = result;
   // no transfer list — the worker keeps its own copies for the export stage
   post({ type: 'result', result });

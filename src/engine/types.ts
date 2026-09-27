@@ -58,6 +58,10 @@ export interface GenerateParams {
                        // stations, or printed at stations + binder as filler
   baseLock?: boolean;  // optional two-piece collar capturing the jacket rim to
                        // the base plate (experimental; fail-soft)
+  masterScale?: number; // uniform rescale of the as-ingested master before
+                       // generation (size-confirm UI); 1 = untouched. gap/wall
+                       // stay absolute mm — geometry regenerates at the target
+                       // size so volumes, gates and exports stay consistent.
 }
 
 // V0.5 manufacturing-reliability layer: clip placement on the frozen seam rail.
@@ -98,6 +102,8 @@ export interface GenerateResult {
   clearanceBand?: { requestedGap: number; min: number; p10: number; p50: number; p90: number; withinBand: boolean };
   fastening?: FasteningInfo;
   printability?: Record<string, PrintabilityReport>;
+  masterScale?: number;                     // echo of params.masterScale
+  partVolumesCm3?: Record<string, number>;  // printed-part volumes for mass estimates
 }
 
 // ---- worker protocol ----

@@ -1,6 +1,5 @@
 // Shared domain types — see docs/SPEC-v0.1.md §3.
 // MeshArrays is the single mesh currency between engine, worker, and viewer.
-import type { PrintabilityReport } from './printability';
 
 export interface MeshArrays {
   vertProperties: Float32Array; // xyz per vertex (numProp = 3)
@@ -53,37 +52,10 @@ export interface GenerateParams {
   material?: 'silicone' | 'hotWax'; // casting material — drives the material
                        // guidance (PLA fine for room-temp RTV; PETG/ASA for hot wax)
   panels?: 2 | 3;      // 3 = multi-panel jacket (heavy half sub-split ±depth)
-  clampMode?: 'binder' | 'printed' | 'hybrid'; // seam fastening: binder clips
-                       // (default, legacy), printed ZeroClips on the rail
-                       // stations, or printed at stations + binder as filler
-  baseLock?: boolean;  // optional two-piece collar capturing the jacket rim to
-                       // the base plate (experimental; fail-soft)
-  masterScale?: number; // uniform rescale of the as-ingested master before
-                       // generation (size-confirm UI); 1 = untouched. gap/wall
-                       // stay absolute mm — geometry regenerates at the target
-                       // size so volumes, gates and exports stay consistent.
-}
-
-// V0.5 manufacturing-reliability layer: clip placement on the frozen seam rail.
-export interface ClampStation {
-  position: [number, number, number]; // clip landing center on the rail's outer face, parting plane
-  normal: [number, number, number];   // outward rail-face normal at the station (unit)
-  bulgeMm: number;                    // max outward deviation of the rail's outer edge from the
-                                      // tangent line within the clip window (curvature + ratchet steps)
-  clipWidthMm?: number;               // straight-run width for this station (≤ the prototype 18 mm) —
-                                      // a flat clip wider than the local straight run loses jaw contact;
-                                      // omitted = full prototype width (straight coupon/ear stubs)
-  railThickness: number;              // measured radial width of the rail band here (mm)
-  index: number;
-}
-
-export interface FasteningInfo {
-  mode: 'binder' | 'printed' | 'hybrid';
-  clipCount: number;
-  usableRailMm: number;
-  pitchMm: number;
-  stations: ClampStation[];
-  warning?: string;
+  masterScale?: number; // SIZE FEATURE (UI layer): uniform rescale of the as-ingested
+                       // master before generation; 1 = untouched. The generation
+                       // pipeline itself is byte-identical to aea5dc3 — it simply
+                       // receives a pre-scaled master; gap/wall stay absolute mm.
 }
 
 export interface GenerateResult {
@@ -100,10 +72,15 @@ export interface GenerateResult {
   gatesPass: boolean;                    // all hard gates green — export allowed
   ports: { crown: { u: number; v: number } | null; vents: number };
   clearanceBand?: { requestedGap: number; min: number; p10: number; p50: number; p90: number; withinBand: boolean };
-  fastening?: FasteningInfo;
-  printability?: Record<string, PrintabilityReport>;
-  masterScale?: number;                     // echo of params.masterScale
-  partVolumesCm3?: Record<string, number>;  // printed-part volumes for mass estimates
+  printability?: Record<string, {
+    bedAreaMm2: number;
+    overhangAreaMm2: number;
+    layerStep: number;
+    layers: number;
+    worstBands: { zLo: number; zHi: number; areaMm2: number }[];
+  }>;
+  masterScale?: number;                    // echo of params.masterScale (size feature)
+  partVolumesCm3?: Record<string, number>; // printed-part volumes for mass estimates (size feature)
 }
 
 // ---- worker protocol ----
@@ -112,7 +89,6 @@ export type WorkerRequest =
   | { type: 'ingest'; fileName: string; bytes: ArrayBuffer }
   | { type: 'generate'; params: GenerateParams }
   | { type: 'export' }
-  | { type: 'coupon' }
   | { type: 'cancel' };
 
 export type WorkerResponse =
@@ -121,7 +97,6 @@ export type WorkerResponse =
   | { type: 'result'; result: GenerateResult }
   | { type: 'failure'; axis: Axis; trappedPct: number; message: string; nextAxis?: Axis; trapFlags?: Uint8Array }
   | { type: 'export'; blob: ArrayBuffer; fileName: string }
-  | { type: 'coupon'; blob: ArrayBuffer; fileName: string; notes: string[] }
   | { type: 'error'; message: string };
 
 export function trisOf(m: MeshArrays): number {

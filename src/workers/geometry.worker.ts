@@ -13,8 +13,7 @@ import { buildSignedDistanceGrid } from '../engine/offset';
 import { analyzePieces } from '../engine/printability';
 import { parseObj } from '../engine/obj';
 import { generateMoldPackage, pickFrame, V02 } from '../engine/split';
-import { buildFitCoupon } from '../engine/coupon';
-import { parseStlBinary, writeStlBinary } from '../engine/stl';
+import { parseStlBinary } from '../engine/stl';
 import { weldMesh } from '../engine/weld';
 import { AXES, type AnalysisReport, type GenerateParams, type GenerateResult, type MeshArrays, type WorkerRequest, WorkerResponse } from '../engine/types';
 
@@ -162,10 +161,10 @@ async function generate(params: GenerateParams): Promise<void> {
   const m = await ensureMod();
   const t0 = Date.now();
 
-  // masterScale (size-confirm UI): uniformly rescale the as-ingested master;
-  // state.master itself stays untouched so repeated regenerations at different
-  // scales never compound. gap/wall remain absolute mm — everything downstream
-  // (grid, package, gates, printability, export) regenerates consistently.
+  // SIZE FEATURE (UI layer): uniformly rescale the as-ingested master before
+  // the pipeline sees it. state.master stays untouched so repeated regenerations
+  // never compound; everything below this block is byte-identical to aea5dc3 —
+  // it simply runs on a pre-scaled master. gap/wall remain absolute mm.
   const k = params.masterScale && params.masterScale > 0 ? params.masterScale : 1;
   const master: MeshArrays = k === 1
     ? state.master
@@ -221,7 +220,6 @@ async function generate(params: GenerateParams): Promise<void> {
       gap, wall, clearance: params.clearance,
       verticalAxis: params.verticalAxis, splitAxis: params.splitAxis,
       gapWindow: params.gapWindow, ribs: params.ribs, material: params.material, panels: params.panels,
-      clampMode: params.clampMode, baseLock: params.baseLock,
     },
     rankedAxes,
     ports: false,
@@ -287,13 +285,9 @@ async function generate(params: GenerateParams): Promise<void> {
       jacketA: pkg.pieces.jacketA, jacketB: pkg.pieces.jacketB, basePlate: pkg.pieces.basePlate,
       siliconeSkin: pkg.pieces.skin,
       ...(is3 ? { jacketB1: pkg.pieces.jacketB1!, jacketB2: pkg.pieces.jacketB2! } : {}),
-      ...(pkg.zeroClip ? { zeroClip: pkg.zeroClip } : {}),
-      ...(pkg.baseLockA && pkg.baseLockB
-        ? { baseLockA: pkg.baseLockA, baseLockB: pkg.baseLockB, ...(pkg.baseLockClip ? { baseLockClip: pkg.baseLockClip } : {}) }
-        : {}),
     },
     siliconeMl: pkg.siliconeMl, outerDim: pkg.jacketDim,
-    params: { gap, wall, clearance: params.clearance, gapWindow: params.gapWindow, ribs: params.ribs, material: params.material, panels: pkg.panels, clampMode: params.clampMode, baseLock: params.baseLock, masterScale: k },
+    params: { gap, wall, clearance: params.clearance, gapWindow: params.gapWindow, ribs: params.ribs, material: params.material, panels: pkg.panels, masterScale: k },
     axis: pkg.axis,
     elapsedMs: Date.now() - t0,
     extraction: {
@@ -307,25 +301,17 @@ async function generate(params: GenerateParams): Promise<void> {
     gatesPass: gateReport.pass,
     ports: { crown: null, vents: pkg.ports.vents.length },
     clearanceBand: gateReport.clearanceBand,
-    fastening: {
-      mode: pkg.clampPlan.mode,
-      clipCount: pkg.clampPlan.stations.length,
-      usableRailMm: pkg.clampPlan.usableRailMm,
-      pitchMm: pkg.clampPlan.pitchMm,
-      stations: pkg.clampPlan.stations,
-      ...(pkg.clampPlan.warning ? { warning: pkg.clampPlan.warning } : {}),
-    },
     printability: analyzePieces({
       mod: m, masterBase: masterBaseArr,
       jackets: is3
         ? [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B1', mesh: pkg.pieces.jacketB1! }, { name: 'jacket_B2', mesh: pkg.pieces.jacketB2! }]
         : [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B', mesh: pkg.pieces.jacketB }],
       vert: pkg.frame.vert, base: pkg.frame.base, crown: pkg.frame.crown,
-      plateT: V02.plateT, pull: pkg.axis, mid: pkg.frame.mid,
+      plateT: V02.plateT,
     }),
   };
-  // per-part volume of everything the user actually prints (mass estimates in
-  // the size panel); preview-only parts (bare master, skin, ghost) excluded
+  // SIZE FEATURE: per-part volume of everything the user actually prints (mass
+  // estimates in the size panel); preview-only parts excluded
   const partVolumesCm3: Record<string, number> = {};
   for (const [name, mesh] of Object.entries(result.parts)) {
     if (name === 'master' || name === 'siliconeSkin' || name === 'jacketOuter') continue;
@@ -338,21 +324,8 @@ async function generate(params: GenerateParams): Promise<void> {
   post({ type: 'result', result });
 }
 
-// Fit coupon — a SEPARATE download, never inside the mold zip. Uses the last
-// generation's joint clearance so the samples match the user's actual mold.
-async function buildCoupon(): Promise<void> {
+async function exportPackage(): Promise<void> {
   if (!state || !state.lastResult) throw new Error('Generate a mold first');
-  const m = await ensureMod();
-  const junk: { delete(): void }[] = [];
-  const track = <T extends { delete(): void }>(x: T): T => { junk.push(x); return x; };
-  const { mesh, notes } = buildFitCoupon({ mod: m, track, clearance: state.lastResult.params.clearance });
-  const stl = new Uint8Array(writeStlBinary(mesh));
-  junk.forEach(x => { try { x.delete(); } catch { /* freed */ } });
-  const blob = stl.buffer.slice(stl.byteOffset, stl.byteOffset + stl.byteLength) as ArrayBuffer;
-  post({ type: 'coupon', blob, fileName: 'fit_coupon.stl', notes }, [blob]);
-}
-
-async function exportPackage(): Promise<void> {  if (!state || !state.lastResult) throw new Error('Generate a mold first');
   const r = state.lastResult;
   if (!r.gatesPass) throw new Error('Validation gates failed — fix the failed checks before exporting');
 
@@ -382,14 +355,6 @@ async function exportPackage(): Promise<void> {  if (!state || !state.lastResult
       checks: r.checks,
       crown: r.ports.crown,
       ventCount: r.ports.vents,
-      fastening: r.fastening,
-      zeroClip: r.parts.zeroClip ?? null,
-      baseLockA: r.parts.baseLockA ?? null,
-      baseLockB: r.parts.baseLockB ?? null,
-      baseLockClip: r.parts.baseLockClip ?? null,
-      baseLockClips: r.parts.baseLockClip ? 2 : 0,
-      clearanceBand: r.clearanceBand,
-      printability: r.printability,
     },
   });
   const blob = zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.byteLength) as ArrayBuffer;
@@ -403,7 +368,6 @@ ctx.onmessage = (e: MessageEvent<WorkerRequest>) => {
       if (req.type === 'ingest') await ingest(req.fileName, req.bytes);
       else if (req.type === 'generate') await generate(req.params);
       else if (req.type === 'export') await exportPackage();
-      else if (req.type === 'coupon') await buildCoupon();
     } catch (err) {
       post({ type: 'error', message: err instanceof Error ? err.message : String(err) });
     }

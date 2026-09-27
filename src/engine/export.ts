@@ -5,9 +5,7 @@
 import { zipSync, type Zippable } from 'fflate';
 import { writeStlBinary } from './stl';
 import { cleanExportMesh, type MeshAudit } from './clean';
-import { CLAMP } from './clamps';
-import type { FasteningInfo, GenerateParams, MeshArrays } from './types';
-import type { PrintabilityReport } from './printability';
+import type { GenerateParams, MeshArrays } from './types';
 
 export interface PackageInfo {
   name: string;
@@ -22,14 +20,11 @@ export interface PackageInfo {
   checks: { name: string; pass: boolean; detail: string }[];
   crown: { u: number; v: number } | null;
   ventCount: number;
-  fastening?: FasteningInfo;
-  zeroClip?: MeshArrays | null; // seated ZeroClip geometry — exported once, printed N×
-  baseLockA?: MeshArrays | null;
-  baseLockB?: MeshArrays | null;
-  baseLockClip?: MeshArrays | null;
-  baseLockClips?: number;
   clearanceBand?: { requestedGap: number; min: number; p10: number; p50: number; p90: number; withinBand: boolean };
-  printability?: Record<string, PrintabilityReport>;
+  printability?: Record<string, {
+    bedAreaMm2: number; overhangAreaMm2: number; layerStep: number; layers: number;
+    worstBands: { zLo: number; zHi: number; areaMm2: number }[];
+  }>;
 }
 
 export interface PrintFiles {
@@ -67,18 +62,6 @@ export function buildPrintFiles(deps: {
     { name: 'master base', file: '01_master/master_base.stl', mesh: masterMesh, note: 'doll + fused base plate — print plate-down as one piece' },
     ...jacketDefs,
     { name: 'silicone skin preview', file: '03_preview/silicone_skin.stl', mesh: parts.siliconeSkin, note: 'NOT printed — this is the mold the silicone will become' },
-    ...(info.zeroClip ? [{
-      name: `zero clip ×${info.fastening?.clipCount ?? '?'}`, file: '04_hardware/zero_clip.stl', mesh: info.zeroClip,
-      note: 'print N of these in PETG, flat on the bed as exported — spring onto the rail stations; never use supports',
-    }] : []),
-    ...(info.baseLockA && info.baseLockB ? [
-      { name: 'base lock A', file: '04_hardware/base_lock_A.stl', mesh: info.baseLockA, note: 'collar half (+pull) — print top-ring-down as exported, PETG for reuse' },
-      { name: 'base lock B', file: '04_hardware/base_lock_B.stl', mesh: info.baseLockB, note: 'collar half (−pull) — slides in from the opposite side' },
-      ...(info.baseLockClip ? [{
-        name: `base lock clip ×${info.baseLockClips ?? 2}`, file: '04_hardware/base_lock_clip.stl', mesh: info.baseLockClip,
-        note: 'mini clip tying the collar halves across the seam — print one per ear',
-      }] : []),
-    ] : []),
   ];
 
   // export mesh gate (hard): clean every part, then require a watertight,
@@ -112,19 +95,6 @@ export function buildPrintFiles(deps: {
       ? `- **Casting material: room-temperature RTV silicone** — **PLA is fine** for every part (the liquid pressure on these walls is ~0.25 psi).`
       : `- **Pouring RTV silicone only → PLA is fine.** **Pouring hot candle wax while the jacket stays on → use PETG/ASA/ABS** (wax pours at 57–79 °C, above PLA's ~55 °C heat-deflection point).`;
 
-  // per-part print risk (grilled schema): diagnostics derived from the
-  // analyzer — risk = the worse of island and bed risk
-  const printRisk = info.printability
-    ? Object.fromEntries(Object.entries(info.printability).map(([part, r]) => [part, {
-      bedAreaMm2: r.bedAreaMm2,
-      unsupportedIslandCount: r.unsupportedIslands.length,
-      slenderness: r.slenderness,
-      brimMm: r.brimMm,
-      risk: r.islandRisk === 'HIGH' || r.bedRisk === 'HIGH' ? 'HIGH'
-        : r.islandRisk === 'MEDIUM' || r.bedRisk === 'MEDIUM' ? 'MEDIUM' : 'LOW',
-    }]))
-    : null;
-
   const project = {
     format: 'matrix-mold-pourbox/0.3',
     name: info.name,
@@ -139,26 +109,8 @@ export function buildPrintFiles(deps: {
     ports: { crown: null as null, ventCount: info.ventCount },
     clearanceBand: info.clearanceBand,
     printability: info.printability,
-    printRisk,
     castingMaterial: info.params.material ?? null,
     hardware: ['6–10 binder clips (25–32 mm), gripping the flat external seam rails'],
-    fastening: info.fastening ? {
-      mode: info.fastening.mode,
-      clipCount: info.fastening.clipCount,
-      clipMaterial: 'PETG',
-      binderClipCompatible: true,
-      usableRailMm: info.fastening.usableRailMm,
-      pitchMm: info.fastening.pitchMm,
-      stations: info.fastening.stations,
-      warning: info.fastening.warning ?? null,
-    } : null,
-    baseLock: info.baseLockA && info.baseLockB ? { enabled: true, parts: 2, clips: info.baseLockClips ?? 2 } : null,
-    calibration: {
-      jointClearanceMm: info.params.clearance,
-      clipFitOffsetMm: CLAMP.clipInterferenceMm,
-      elephantFootMm: 0.2,
-      status: 'factory-defaults — recalibrate via the fit coupon',
-    },
     validation: info.checks,
     meshAudit,
     warnings: info.warnings,
@@ -170,13 +122,7 @@ export function buildPrintFiles(deps: {
 Split axis: **±${info.axis}** · Silicone needed: **≈ ${info.siliconeMl.toFixed(0)} mL** (prepare ${(info.siliconeMl * 1.1).toFixed(0)} mL)
 
 ## Hardware
-${info.fastening && info.fastening.stations.length > 0
-    ? (info.zeroClip
-      ? `- Fastening: **${info.fastening.mode}** — print **${info.fastening.clipCount} ZeroClips** (\`04_hardware/zero_clip.stl\`, PETG, flat on the bed) and spring one onto each station of the external seam rail${info.fastening.mode === 'hybrid' ? '; binder clips may fill any gap between stations' : ''}. Station coordinates ship in \`project.json → fastening.stations\`.`
-      : `- Clip plan: **${info.fastening.stations.length} clamp stations** evenly spaced on the external seam rail (usable rail ≈ ${info.fastening.usableRailMm.toFixed(0)} mm, spacing ≈ ${info.fastening.pitchMm.toFixed(0)} mm) — one 25–32 mm binder clip per station, flat land against the rail. Station coordinates ship in \`project.json → fastening.stations\`.`)
-    : '- 6–10 binder clips sized to the 5 mm seam rail stack; removable seam/base sealant'}
-- Removable seam/base sealant${info.fastening?.warning ? `\n- ⚠ ${info.fastening.warning}` : ''}
-${info.baseLockA && info.baseLockB ? `- **BaseLock**: after seating the jackets, slide collar half **A** and half **B** in from opposite ±${info.axis} sides under the plate edge, then close each ear with a mini clip. **Remove the collar and clips before extracting the jackets.**` : ''}
+- 6–10 binder clips sized to the 5 mm seam rail stack; removable seam/base sealant
 
 ## Material & print profiles
 ${materialNote}
@@ -198,22 +144,9 @@ ${materialNote}
 ## Parts
 ${partMeta.map((p) => `- **${p.name}** — \`${p.file}\` (${p.triangles.toLocaleString()} tris${p.volumeCm3 ? `, ${p.volumeCm3} cm³` : ''}) — ${p.note}`).join('\n')}
 
-${info.printability ? `## Support forecast (coarse 45° layer analysis)\n${Object.entries(info.printability).map(([name, r]) => {
-  const islands = r.unsupportedIslands?.length ?? 0;
-  const risk = r.islandRisk === 'HIGH' ? ' — ⚠ unsupported island > 15 mm² (hard-fail candidate)' : islands ? ` — ${islands} unsupported island(s) ≥ 4 mm²` : '';
-  const brim = r.brimMm ? ` · brim ${r.brimMm} mm (${r.bedRisk.toLowerCase()} bed risk, slenderness ${r.slenderness})` : ' · no brim needed';
-  return `- **${name}**: bed contact ≈ ${r.bedAreaMm2} mm² · unsupported growth ≈ ${r.overhangAreaMm2} mm²${r.worstBands.length ? ` — paint supports around the ${r.worstBands.slice(0, 2).map((b) => `${b.areaMm2} mm² band at z ${b.zLo}–${b.zHi}`).join(' and ')}` : ''}${risk}${brim}`;
-}).join('\n')}\n` : ''}
+${info.printability ? `## Support forecast (coarse 45° layer analysis)\n${Object.entries(info.printability).map(([name, r]) => `- **${name}**: bed contact ≈ ${r.bedAreaMm2} mm² · unsupported growth ≈ ${r.overhangAreaMm2} mm²${r.worstBands.length ? ` — paint supports around the ${r.worstBands.slice(0, 2).map((b) => `${b.areaMm2} mm² band at z ${b.zLo}–${b.zHi}`).join(' and ')}` : ''}`).join('\n')}\n` : ''}
 ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).join('\n')}` : ''}
 `;
-
-  const brimFor = (part: string): string => {
-    const r = info.printability?.[part];
-    if (!r) return 'optional';
-    return r.brimMm
-      ? `${r.brimMm} mm recommended (bed risk ${r.bedRisk.toLowerCase()}, slenderness ${r.slenderness})`
-      : 'none needed (bed risk low)';
-  };
 
   const printProfile = {
     format: 'matrix-mold-print-profiles/0.3',
@@ -234,10 +167,8 @@ ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).
         infill_pattern: 'gyroid',
         top_bottom_solid_layers: 5,
         support: 'organic/tree where needed, support interface enabled',
-        support_interface_layers: 3,
         seam: 'rear / least-visible surface — RTV silicone reproduces layer lines and seam scars',
         elephant_foot_compensation_mm: 0.2,
-        warning: 'Silicone reproduces support-contact scars.',
         post_process: 'sand/fill if a smooth cast surface is wanted → seal (e.g. Smooth-On print coating) → release agent → pour silicone',
       },
       jacket_A: {
@@ -249,7 +180,7 @@ ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).
         infill_percent: [10, 15],
         infill_pattern: 'gyroid',
         support: '~55° threshold, painted where necessary',
-        brim: brimFor('jacket_A'),
+        brim: 'optional',
         seam: 'rear / away from the mating rail',
         elephant_foot_compensation_mm: 0.2,
       },
@@ -261,8 +192,8 @@ ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).
         perimeters: '3 (4 for heavy reuse)',
         infill_percent: [10, 15],
         infill_pattern: 'gyroid',
-        support: '~55° threshold, painted where necessary',
-        brim: brimFor('jacket_B'),
+        support: '~55° threshold, painted where necessary — B typically needs more support than A',
+        brim: '5 mm recommended',
         seam: 'rear / away from the mating rail',
         elephant_foot_compensation_mm: 0.2,
       },
@@ -270,53 +201,6 @@ ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).
         print: false,
         note: 'DO NOT PRINT — this STL is the visualization of the silicone the cavity will become.',
       },
-      ...(info.zeroClip ? {
-        zero_clip: {
-          orientation: 'flat on the bed, as exported — never stand it up',
-          material: 'PETG (PLA only as a prototype — repeated flexing fatigues PLA)',
-          nozzle_mm: 0.4,
-          layer_height_mm: 0.2,
-          perimeters: '4–5',
-          infill_percent: 100,
-          support: 'none — the profile is support-free flat; supports would ruin the spring',
-          quantity: info.fastening?.clipCount ?? null,
-          fit_note: 'jaws grip the 5 mm rail stack with 0.3 mm total interference — if seating is impossible or slack, recalibrate via the fit coupon',
-        },
-      } : {}),
-      ...(info.baseLockA && info.baseLockB ? {
-        base_lock_A: {
-          orientation: 'top-ring-down, as exported — the flat cap ring is the bed face',
-          material: 'PETG',
-          nozzle_mm: 0.4,
-          layer_height_mm: 0.2,
-          perimeters: 4,
-          infill_percent: [25, 40],
-          support: 'none — all faces are vertical walls or horizontal beds',
-          note: 'captures the jacket rim to the plate (0.6 mm capture travel); slide on after seating the jackets',
-        },
-        base_lock_B: {
-          orientation: 'top-ring-down, as exported — the flat cap ring is the bed face',
-          material: 'PETG',
-          nozzle_mm: 0.4,
-          layer_height_mm: 0.2,
-          perimeters: 4,
-          infill_percent: [25, 40],
-          support: 'none — all faces are vertical walls or horizontal beds',
-          note: 'mirror of base_lock_A — slides in from the opposite side; remove both before jacket extraction',
-        },
-        ...(info.baseLockClip ? {
-          base_lock_clip: {
-            orientation: 'flat on the bed, as exported',
-            material: 'PETG',
-            nozzle_mm: 0.4,
-            layer_height_mm: 0.2,
-            perimeters: '4–5',
-            infill_percent: 100,
-            support: 'none',
-            quantity: info.baseLockClips ?? 2,
-          },
-        } : {}),
-      } : {}),
     },
   };
 

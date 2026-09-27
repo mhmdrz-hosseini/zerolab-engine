@@ -41,8 +41,10 @@ type EnvelopeId = (typeof ENVELOPES)[number]['id'];
 
 // mold size presets (largest dimension of the whole printed mold, cm):
 // cupcake minimum → printer bed cap
+// smallest achievable mold: 20 mm master floor + ~45 mm frame constants ≈ 6.5 cm
+const SIZE_MIN_CM = 6.5;
 const SIZE_PRESETS = [
-  { id: 'cupcake', cm: 5, labelKey: 'size.preset.cupcake' },
+  { id: 'cupcake', cm: 6.5, labelKey: 'size.preset.cupcake' },
   { id: 'small', cm: 8, labelKey: 'size.preset.small' },
   { id: 'medium', cm: 12, labelKey: 'size.preset.medium' },
   { id: 'large', cm: 16, labelKey: 'size.preset.large' },
@@ -61,10 +63,6 @@ export function GeneratePanel() {
   const exportPkg = useStore((s) => s.exportPkg);
   const exportUrl = useStore((s) => s.exportUrl);
   const exportName = useStore((s) => s.exportName);
-  const couponUrl = useStore((s) => s.couponUrl);
-  const couponName = useStore((s) => s.couponName);
-  const couponNotes = useStore((s) => s.couponNotes);
-  const requestCoupon = useStore((s) => s.requestCoupon);
   const toggleLayer = useStore((s) => s.toggleLayer);
   const phase = useStore((s) => s.phase);
   const lang = useStore((s) => s.lang);
@@ -75,8 +73,6 @@ export function GeneratePanel() {
   const [wall, setWall] = useState<WallId>('standard');
   const [ribs, setRibs] = useState(false);
   const [material, setMaterial] = useState<'silicone' | 'hotWax'>('silicone');
-  const [clampMode, setClampMode] = useState<'binder' | 'printed' | 'hybrid'>('binder');
-  const [baseLock, setBaseLock] = useState(false);
   const [targetCm, setTargetCm] = useState<number | null>(null); // null = track actual
   const targetRef = useRef<number | null>(null);
   targetRef.current = targetCm;
@@ -118,8 +114,6 @@ export function GeneratePanel() {
     gapWindow: envelope === 'tight' ? Math.max(1.5, p.gap / 2) : undefined,
     ribs,
     material,
-    clampMode,
-    baseLock,
   };
   const busy = phase === 'busy';
 
@@ -143,9 +137,10 @@ export function GeneratePanel() {
       kk = Math.min(kk, k0 + (targetMm - o) / d);
     }
     if (!Number.isFinite(kk)) kk = 1;
-    // keep the scaled master inside the ingest window (grid budget)
+    // keep the scaled master inside the pipeline's validated ingest window
+    // (20–280 mm — same bounds the intake normalization enforces)
     kk = Math.min(kk, 280 / maxMasterDim);
-    kk = Math.max(kk, 15 / maxMasterDim, 0.05);
+    kk = Math.max(kk, 20 / maxMasterDim, 0.05);
     return kk;
   };
   const k = solveK(cm * 10);
@@ -182,25 +177,25 @@ export function GeneratePanel() {
         <span className="size-label">{t('size.sliderLabel')}</span>
         <input
           className="size-num"
-          type="number" dir="ltr" min={5} max={20} step={0.5}
+          type="number" dir="ltr" min={SIZE_MIN_CM} max={20} step={0.5}
           value={cm}
           disabled={busy}
           onChange={(e) => {
             const v = Number(e.target.value);
-            if (v >= 5 && v <= 20) setTargetCm(v);
+            if (v >= SIZE_MIN_CM && v <= 20) setTargetCm(v);
           }}
           onBlur={(e) => {
             const v = Number(e.target.value);
-            if (v >= 5 && v <= 20) commitSize(v);
+            if (v >= SIZE_MIN_CM && v <= 20) commitSize(v);
           }}
         />
         <span className="size-unit">{t('size.cm')}</span>
       </div>
       <input
-        type="range" min={5} max={20} step={0.5}
+        type="range" min={SIZE_MIN_CM} max={20} step={0.5}
         value={cm}
         disabled={busy}
-        style={{ ['--slider-fill' as never]: `${((cm - 5) / 15) * 100}%` }}
+        style={{ ['--slider-fill' as never]: `${((cm - SIZE_MIN_CM) / (20 - SIZE_MIN_CM)) * 100}%` }}
         onChange={(e) => setTargetCm(Number(e.target.value))}
         onPointerUp={() => commitSize(cm)}
         onBlur={() => targetCm !== null && commitSize(cm)}
@@ -276,19 +271,6 @@ export function GeneratePanel() {
         </button>
         <button className={`chip${material === 'hotWax' ? ' on' : ''}`} onClick={() => setMaterial('hotWax')} disabled={busy} title={t('gen.matTitle.hotWax')}>
           {t('gen.mat.hotWax')}
-        </button>
-      </div>
-      <div className="chips" title={t('gen.hardwareTitle')}>
-        <span className="hint dim" style={{ alignSelf: 'center' }}>{t('gen.hardware')}</span>
-        {([['binder', 'hw.binder', 'hw.hint.binder'],
-           ['printed', 'hw.printed', 'hw.hint.printed'],
-           ['hybrid', 'hw.hybrid', 'hw.hint.hybrid']] as const).map(([id, labelKey, hintKey]) => (
-          <button key={id} className={`chip${clampMode === id ? ' on' : ''}`} onClick={() => setClampMode(id)} disabled={busy} title={t(hintKey)}>
-            {t(labelKey)}
-          </button>
-        ))}
-        <button className={`chip${baseLock ? ' on' : ''}`} onClick={() => setBaseLock(!baseLock)} disabled={busy} title={t('gen.baseLockTitle')}>
-          {t('gen.baseLock')}
         </button>
       </div>
       <button
@@ -392,21 +374,8 @@ export function GeneratePanel() {
           ) : (
             <button className="btn primary wide" disabled>{t('gen.exportBlocked')}</button>
           )}
-          {couponUrl ? (
-            <a className="btn wide" href={couponUrl} download={couponName ?? 'fit_coupon.stl'}>{t('gen.downloadStl', { name: couponName ?? 'fit_coupon.stl' })}</a>
-          ) : (
-            <button className="btn wide" onClick={requestCoupon} disabled={busy} title={t('gen.couponBtnTitle')}>
-              {t('gen.couponBtn')}
-            </button>
-          )}
-          {couponNotes.length > 0 && (
-            <div className="hint dim">{couponNotes.map((n) => te(lang, n)).join(' · ')}</div>
-          )}
           <div className="hint dim">
-            {t('gen.hardware')}{' '}{result.fastening
-              ? t('gen.fastening', { n: result.fastening.clipCount, mode: result.fastening.mode }) + (result.fastening.warning ? t('gen.fastening.warn', { w: te(lang, result.fastening.warning) }) : '')
-              : t('gen.fastening.default')}
-            . {t('gen.package')}
+            {t('gen.hardware')} {t('gen.fastening.default')}. {t('gen.package')}
           </div>
         </div>
       )}

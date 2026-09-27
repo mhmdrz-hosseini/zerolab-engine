@@ -139,7 +139,7 @@ const en = {
   'size.smallHint':
     'At this scale the {g} mm gap is large relative to the model — the “Small detail” preset (6 mm) wastes less silicone.',
   'size.densityNote': 'mass ≈ volume × 1.2 g/cm³ (printed resin/PLA) · casting resin ≈ 1.13 g/cm³',
-  'size.range': '5–20 cm — cupcake minimum, 20 cm printer cap per dimension',
+  'size.range': '6.5–20 cm — cupcake floor (20 mm master minimum), 20 cm printer cap per dimension',
 };
 
 export type Key = keyof typeof en;
@@ -274,7 +274,7 @@ const fa: Record<Key, string> = {
   'size.smallHint':
     'در این اندازه، گپ {g} میلی‌متری نسبت به مدل بزرگ است — پریست «جزئیات ریز» (6 میلی‌متر) سیلیکون کمتری هدر می‌دهد.',
   'size.densityNote': 'جرم ≈ حجم × 1.2 گرم بر سانتی‌متر مکعب (رزین/PLA چاپی) · رزین ریخته‌گری ≈ 1.13',
-  'size.range': '۵ تا ۲۰ سانتی‌متر — کف کاپ‌کیک، سقف چاپ ۲۰ سانتی‌متر در هر بعد',
+  'size.range': '۶٫۵ تا ۲۰ سانتی‌متر — کف کاپ‌کیک (کمینهٔ معتبر مستر 20 میلی‌متر)، سقف چاپ ۲۰ سانتی‌متر',
 };
 
 function interpolate(s: string, vars?: Record<string, string | number>): string {

@@ -21,9 +21,7 @@ import { weldMesh } from '../src/engine/weld';
 import { parseGlb } from '../src/engine/glb';
 import { parseObj } from '../src/engine/obj';
 import { parseStlBinary } from '../src/engine/stl';
-import { writeStlBinary } from '../src/engine/stl';
 import { buildPrintFiles } from '../src/engine/export';
-import { buildFitCoupon } from '../src/engine/coupon';
 import { analyzePieces } from '../src/engine/printability';
 import { V02 } from '../src/engine/split';
 import { generateMoldPackage, pickFrame } from '../src/engine/split';
@@ -52,10 +50,6 @@ const GAP_WINDOW = arg('gap-window') ? Number(arg('gap-window')) : undefined;
 const RIBS = has('ribs');
 const MATERIAL = (arg('material') as 'silicone' | 'hotWax' | undefined) ?? undefined;
 const PANELS = Number(arg('panels') ?? 2) === 3 ? 3 as const : 2 as const;
-const CLAMP_MODE_RAW = arg('clamp');
-const CLAMP_MODE = CLAMP_MODE_RAW === 'printed' || CLAMP_MODE_RAW === 'hybrid' ? CLAMP_MODE_RAW : 'binder' as const;
-const BASE_LOCK = has('base-lock');
-const COUPON = has('coupon');
 const VERTICAL = arg('vertical') as Axis | undefined;
 const SPLIT = arg('split') as Axis | undefined;
 const NO_ZIP = has('no-zip');
@@ -153,7 +147,7 @@ console.log(`${el()} ranked axes: ${rankedAxes.join(' → ')}`);
 // --- generate ---
 const pkg = await generateMoldPackage({
   mod, master: full, grid,
-  params: { gap: GAP, wall: WALL, clearance: CLEARANCE, verticalAxis: VERTICAL, splitAxis: SPLIT, gapWindow: GAP_WINDOW, ribs: RIBS, material: MATERIAL, panels: PANELS, clampMode: CLAMP_MODE, baseLock: BASE_LOCK },
+  params: { gap: GAP, wall: WALL, clearance: CLEARANCE, verticalAxis: VERTICAL, splitAxis: SPLIT, gapWindow: GAP_WINDOW, ribs: RIBS, material: MATERIAL, panels: PANELS },
   rankedAxes, ports: false,
   onProgress: (stage) => console.log(`${el()} ${stage}`),
 });
@@ -207,14 +201,11 @@ const printability = analyzePieces({
     ? [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B1', mesh: pkg.pieces.jacketB1! }, { name: 'jacket_B2', mesh: pkg.pieces.jacketB2! }]
     : [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B', mesh: pkg.pieces.jacketB! }],
   vert: pkg.frame.vert, base: pkg.frame.base, crown: pkg.frame.crown, plateT: V02.plateT,
-  pull: pkg.axis, mid: pkg.frame.mid,
 });
 for (const [name, r] of Object.entries(printability)) {
   console.log(`  ${name}: bed ${r.bedAreaMm2} mm² · unsupported @45° ${r.overhangAreaMm2} mm²` +
-    (r.worstBands.length ? ` · worst ${r.worstBands[0].areaMm2} mm² @ ${r.worstBands[0].zLo}–${r.worstBands[0].zHi} mm` : '') +
-    (r.precisionRisk === 'WARN' ? ` · ⚠ precision-band overhang ${r.precisionOverhangMm2} mm²` : ''));
+    (r.worstBands.length ? ` · worst ${r.worstBands[0].areaMm2} mm² @ ${r.worstBands[0].zLo}–${r.worstBands[0].zHi} mm` : ''));
 }
-console.log(`${el()} clip plan: ${pkg.clampPlan.stations.length} stations (usable rail ${pkg.clampPlan.usableRailMm} mm, pitch ${pkg.clampPlan.pitchMm} mm, mode ${pkg.clampPlan.mode})${pkg.zeroClip ? ' · ZeroClip geometry built' : ''}${pkg.clampPlan.warning ? ` — ${pkg.clampPlan.warning}` : ''}`);
 
 // --- package ---
 const bbOf = (m: MeshArrays) => {
@@ -249,19 +240,6 @@ try {
       checks: gates.checks,
       crown: null,
       ventCount: pkg.ports.vents.length,
-      fastening: {
-        mode: pkg.clampPlan.mode,
-        clipCount: pkg.clampPlan.stations.length,
-        usableRailMm: pkg.clampPlan.usableRailMm,
-        pitchMm: pkg.clampPlan.pitchMm,
-        stations: pkg.clampPlan.stations,
-        ...(pkg.clampPlan.warning ? { warning: pkg.clampPlan.warning } : {}),
-      },
-      zeroClip: pkg.zeroClip,
-      baseLockA: pkg.baseLockA,
-      baseLockB: pkg.baseLockB,
-      baseLockClip: pkg.baseLockClip,
-      baseLockClips: pkg.baseLockClips,
       clearanceBand: gates.clearanceBand,
       printability,
     },
@@ -279,16 +257,6 @@ for (const [path, data] of Object.entries(files)) {
 if (!NO_ZIP) {
   mkdirSync(dirname(`${OUT_DIR}/${fileName}`), { recursive: true });
   writeFileSync(`${OUT_DIR}/${fileName}`, zip);
-}
-if (COUPON) {
-  // separate calibration download — never inside the mold zip
-  const junk: { delete(): void }[] = [];
-  const track = <T extends { delete(): void }>(x: T): T => { junk.push(x); return x; };
-  const coupon = buildFitCoupon({ mod, track, clearance: CLEARANCE });
-  writeFileSync(`${OUT_DIR}/fit_coupon.stl`, new Uint8Array(writeStlBinary(coupon.mesh)));
-  junk.forEach(x => { try { x.delete(); } catch { /* freed */ } });
-  console.log(`${el()} fit coupon written to ${OUT_DIR}/fit_coupon.stl`);
-  for (const n of coupon.notes) console.log(`  · ${n}`);
 }
 console.log(`${el()} package written to ${OUT_DIR}/ ${NO_ZIP ? '' : `(+ ${fileName})`}`);
 console.log(`frame: vert ${pkg.frame.vert}, pull ±${pkg.frame.pull}, base ${pkg.frame.base.toFixed(1)}, mid ${pkg.frame.mid.toFixed(1)}, crown ${pkg.frame.crown.toFixed(1)}`);

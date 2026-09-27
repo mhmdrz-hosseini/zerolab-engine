@@ -77,9 +77,10 @@ function perComponentVolume(vp: Float32Array, tv: Uint32Array, find: (i: number)
 }
 
 /** Merge verts that share a quantization bucket (first occurrence wins).
- *  The bucket is scale-relative — it only needs to weld float32/manifold
- *  round-trip seams (≈1e-7 × coordinate), so a fixed 1 µm bucket would weld
- *  real features once masterScale shrinks the model to cupcake sizes. */
+ *  SIZE FEATURE support: the bucket is scale-relative — it only needs to weld
+ *  float32/manifold round-trip seams (≈1e-7 × coordinate), so a fixed 1 µm
+ *  bucket would weld real features once the size panel shrinks the master to
+ *  cupcake sizes. Mold geometry itself is untouched. */
 function quantizeMerge(vp: Float32Array, tv: Uint32Array): { vp: Float32Array; tv: Uint32Array; merged: number } {
   const n = vp.length / 3;
   let bboxMax = 0;
@@ -118,6 +119,22 @@ function quantizeMerge(vp: Float32Array, tv: Uint32Array): { vp: Float32Array; t
 }
 
 /**
+ * Signed-volume (divergence theorem) of a MeshArrays solid in cm³ — SIZE
+ * FEATURE helper: cheap per-part mass estimates for the size/material panel.
+ */
+export function meshVolumeCm3(m: MeshArrays): number {
+  const vp = m.vertProperties, tv = m.triVerts;
+  let vol6 = 0;
+  for (let t = 0; t < tv.length; t += 3) {
+    const a = tv[t] * 3, b = tv[t + 1] * 3, c = tv[t + 2] * 3;
+    vol6 += vp[a] * (vp[b + 1] * vp[c + 2] - vp[b + 2] * vp[c + 1])
+          + vp[a + 1] * (vp[b + 2] * vp[c] - vp[b] * vp[c + 2])
+          + vp[a + 2] * (vp[b] * vp[c + 1] - vp[b + 1] * vp[c]);
+  }
+  return Math.abs(vol6) / 6 / 1000;
+}
+
+/**
  * Collapse the closest vert pair of exact-collinear slivers that survived the
  * merge (their coincident corners are float32 round-trip seams).
  */
@@ -139,11 +156,11 @@ function collapseSlivers(vp: Float32Array, tv: Uint32Array, maxDist = 0.1): { vp
         if (d2 <= bestD2) { bestD2 = d2; best = [p, q]; }
       }
       if (!best) {
-        // Long exact-collinear seam (kernel boolean T-junction cap — e.g. three
-        // points 0.2/0.2 mm apart on a straight edge): the middle vertex lies
-        // ON the longest edge, so welding it to the nearest endpoint removes
-        // the fin without bending any neighboring face. Bounded at 1 mm —
-        // beyond that it is a reported defect, never silently moved.
+        // SIZE FEATURE support (export hygiene, not mold geometry): short
+        // exact-collinear seams (kernel boolean T-junction caps) must be
+        // welded or the scaled-down master/plate union fails the watertight
+        // export gate. Bounded at 1 mm — beyond that it is a reported defect,
+        // never silently moved.
         const len2Of = (p: number, q: number): number => {
           const dx = vp[p * 3] - vp[q * 3], dy = vp[p * 3 + 1] - vp[q * 3 + 1], dz = vp[p * 3 + 2] - vp[q * 3 + 2];
           return dx * dx + dy * dy + dz * dz;
@@ -229,22 +246,6 @@ export function auditMeshArrays(vp: Float32Array, tv: Uint32Array): MeshAudit {
     zeroVolumeComponents,
     volumeCm3: Number(volumeCm3.toFixed(1)),
   };
-}
-
-/**
- * Signed-volume (divergence theorem) of a MeshArrays solid in cm³ — cheap
- * per-part mass estimates for the size/material panel.
- */
-export function meshVolumeCm3(m: MeshArrays): number {
-  const vp = m.vertProperties, tv = m.triVerts;
-  let vol6 = 0;
-  for (let t = 0; t < tv.length; t += 3) {
-    const a = tv[t] * 3, b = tv[t + 1] * 3, c = tv[t + 2] * 3;
-    vol6 += vp[a] * (vp[b + 1] * vp[c + 2] - vp[b + 2] * vp[c + 1])
-          + vp[a + 1] * (vp[b + 2] * vp[c] - vp[b] * vp[c + 2])
-          + vp[a + 2] * (vp[b] * vp[c + 1] - vp[b + 1] * vp[c]);
-  }
-  return Math.abs(vol6) / 6 / 1000;
 }
 
 /**

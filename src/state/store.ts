@@ -81,10 +81,10 @@ function getWorker(): Worker {
       });
     } else if (msg.type === 'export') {
       const url = URL.createObjectURL(new Blob([msg.blob], { type: 'application/zip' }));
-      useStore.setState({ exportUrl: url, exportName: msg.fileName, progress: null });
+      useStore.setState({ phase: 'ready', exportUrl: url, exportName: msg.fileName, progress: null });
     } else if (msg.type === 'coupon') {
       const url = URL.createObjectURL(new Blob([msg.blob], { type: 'model/stl' }));
-      useStore.setState({ couponUrl: url, couponName: msg.fileName, couponNotes: msg.notes, progress: null });
+      useStore.setState({ phase: 'ready', couponUrl: url, couponName: msg.fileName, couponNotes: msg.notes, progress: null });
     } else if (msg.type === 'error') {
       useStore.setState({ phase: 'error', progress: null, error: msg.message });
     }

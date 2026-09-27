@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { GenerateParams } from '../engine/types';
 import { useStore } from '../state/store';
 import { te, useT } from '../i18n';
@@ -78,6 +78,34 @@ export function GeneratePanel() {
   const [clampMode, setClampMode] = useState<'binder' | 'printed' | 'hybrid'>('binder');
   const [baseLock, setBaseLock] = useState(false);
   const [targetCm, setTargetCm] = useState<number | null>(null); // null = track actual
+  const targetRef = useRef<number | null>(null);
+  targetRef.current = targetCm;
+  // one corrective regeneration per committed target: the quiet-line seam
+  // picker can switch split/pour axis between scales, which shifts the frame
+  // constants and lands the first pass up to ~10% off the target size
+  const autoFixedFor = useRef<number | null>(null);
+
+  // corrective pass (hooks run before the !report early-return below)
+  useEffect(() => {
+    if (phase === 'busy') return;
+    const tgt = targetRef.current;
+    const res = useStore.getState().result;
+    const rep = useStore.getState().report;
+    if (!tgt || !res || !rep) return;
+    if (autoFixedFor.current === tgt) return;
+    const want = tgt * 10;
+    const actual = Math.max(...res.outerDim);
+    autoFixedFor.current = tgt;
+    if (Math.abs(actual - want) <= want * 0.02) return;
+    const bind = res.outerDim.indexOf(actual);
+    const d = rep.bbox.dim[bind];
+    if (d <= 0.001) return;
+    const maxMaster = Math.max(...rep.bbox.dim);
+    let k2 = (res.params.masterScale ?? 1) + (want - actual) / d;
+    k2 = Math.min(k2, 280 / maxMaster);
+    k2 = Math.max(k2, 15 / maxMaster, 0.05);
+    useStore.getState().generate({ ...res.params, masterScale: k2, splitAxis: res.axis });
+  }, [phase, result]);
 
   if (!report) return null;
   const p = PRESETS.find((x) => x.id === preset)!;
@@ -124,7 +152,13 @@ export function GeneratePanel() {
 
   const commitSize = (cmValue: number) => {
     if (busy) return;
-    generate({ ...params, masterScale: solveK(cmValue * 10) });
+    // pin the current split axis: resizing must not rotate the mold, and the
+    // affine outer-dim solve is only exact within one axis configuration
+    generate({
+      ...params,
+      masterScale: solveK(cmValue * 10),
+      ...(result ? { splitAxis: result.axis } : {}),
+    });
   };
 
   // ---- live material estimates (exact once k === k0, i.e. after regen) ----
@@ -257,7 +291,11 @@ export function GeneratePanel() {
           {t('gen.baseLock')}
         </button>
       </div>
-      <button className="btn primary wide" onClick={() => generate({ ...params, masterScale: k })} disabled={busy}>
+      <button
+        className="btn primary wide"
+        onClick={() => generate({ ...params, masterScale: k, ...(result ? { splitAxis: result.axis } : {}) })}
+        disabled={busy}
+      >
         {result ? t('gen.regenerate') : t('gen.generate')}
       </button>
 

@@ -36,8 +36,6 @@ export interface CleanedMesh {
   audit: MeshAudit;
 }
 
-const Q = 1000; // 1 µm — same weld tolerance as the STL intake parser
-
 type V3 = [number, number, number];
 
 function cross(a: V3, b: V3): V3 {
@@ -78,9 +76,21 @@ function perComponentVolume(vp: Float32Array, tv: Uint32Array, find: (i: number)
   return compVol;
 }
 
-/** Merge verts that share a 1 µm quantization bucket (first occurrence wins). */
+/** Merge verts that share a quantization bucket (first occurrence wins).
+ *  The bucket is scale-relative — it only needs to weld float32/manifold
+ *  round-trip seams (≈1e-7 × coordinate), so a fixed 1 µm bucket would weld
+ *  real features once masterScale shrinks the model to cupcake sizes. */
 function quantizeMerge(vp: Float32Array, tv: Uint32Array): { vp: Float32Array; tv: Uint32Array; merged: number } {
   const n = vp.length / 3;
+  let bboxMax = 0;
+  for (let i = 0; i < n; i++) {
+    for (let c = 0; c < 3; c++) {
+      const v = Math.abs(vp[i * 3 + c]);
+      if (v > bboxMax) bboxMax = v;
+    }
+  }
+  const eps = Math.max(1e-4, bboxMax * 2e-6); // mm — ≥ float32 noise, ≪ feature spacing
+  const Q = 1 / eps;
   const remap = new Int32Array(n).fill(-1);
   const vmap = new Map<string, number>();
   const outVp = new Float32Array(n * 3);

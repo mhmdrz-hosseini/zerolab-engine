@@ -309,6 +309,16 @@ const FA_STATIC: Record<string, string> = {
   'Topology not manifold — attempting SDF remesh repair': 'توپولوژی منیفولد نیست — تلاش برای ترمیم با SDF',
   'Decimating analysis mesh': 'ساده‌سازی مش تحلیل',
   'Building distance field': 'ساخت فیلد فاصله',
+  'Distance field (exact BVH queries)': 'فیلد فاصله (کوئری‌های دقیق BVH)',
+  'Lofting a smooth, releasable envelope around the master': 'ساخت پوسته‌ی نرم و جداشدنی دور مستر',
+  'Building the third panel (sub-splitting the heavy half)': 'ساخت پنل سوم (زیرتقسیم نیمه‌ی سنگین)',
+  'Building the glove and simulating extraction': 'ساخت دستکش و شبیه‌سازی جداسازی',
+  'Simulating the release path': 'شبیه‌سازی مسیر جداشدن',
+  'Simulating the release path (half B)': 'شبیه‌سازی مسیر جداشدن (نیمه‌ی B)',
+  'Simulating the release path (sub-panels B1/B2)': 'شبیه‌سازی مسیر جداشدن (زیرپنل‌های B1/B2)',
+  'Building the contoured base plate': 'ساخت پلیت کنتوردار',
+  'Building ZeroClips': 'ساخت زیروکلیپ‌ها',
+  'Building BaseLock collar': 'ساخت کولار بیس‌لاک',
   'Splitting jacket and simulating extraction': 'برش جکت و شبیه‌سازی جداسازی',
   'Running validation gates': 'اجرای گیت‌های اعتبارسنجی',
   Done: 'تمام',
@@ -343,16 +353,35 @@ const FA_PATTERNS: FaPattern[] = [
   [/^Printed part (\d+) non-empty$/, (n) => `قطعه‌ی چاپی ${n} خالی نیست`],
   // gate details
   [
-    /^bottom at ([\d.]+) mm = plate top ([\d.]+)$/,
+    /^bottom at (-?[\d.]+) mm = plate top (-?[\d.]+)$/,
     (a, b) => `کف در ${a} میلی‌متر = سطح پلیت ${b}`,
   ],
   [
-    /^bottom at ([\d.]+) mm vs plate top ([\d.]+) — hangs below the plate \(support waste\)$/,
+    /^bottom at (-?[\d.]+) mm vs plate top (-?[\d.]+) — hangs below the plate \(support waste\)$/,
     (a, b) => `کف در ${a} در برابر سطح پلیت ${b} — زیر پلیت آویزان است (هدررفت ساپورت)`,
   ],
   [
-    /^bottom at ([\d.]+) mm vs plate top ([\d.]+) — floats above it$/,
+    /^bottom at (-?[\d.]+) mm vs plate top (-?[\d.]+) — floats above it$/,
     (a, b) => `کف در ${a} در برابر سطح پلیت ${b} — بالای پلیت شناور است`,
+  ],
+  // SDF grid progress
+  [
+    /^Distance field grid (\d+)×(\d+)×(\d+)$/,
+    (a, b, c) => `گرید فیلد فاصله ${a}×${b}×${c}`,
+  ],
+  [
+    /^Distance field done \(([\d,]+) exact queries\)$/,
+    (n) => `فیلد فاصله تمام شد (${n} کوئری دقیق)`,
+  ],
+  // split ladder progress
+  [
+    /^Splitting along ±([XYZ]) \(candidate (\d+)\/(\d+)\)$/,
+    (ax, i, n) => `برش در راستای ±${ax} (نامزد ${i} از ${n})`,
+  ],
+  [/^Rejected ±([XYZ]): (.+)$/, (ax, r) => `رد شد ±${ax}: ${r}`],
+  [
+    /^No 2-piece split extracted — retrying ±([XYZ]) as a 3-piece jacket$/,
+    (ax) => `جداشدن دوتکه نشد — تلاش مجدد ±${ax} به‌صورت جکت سه‌تکه`,
   ],
   [
     /^jacket top ([\d.]+) mm, master top ([\d.]+) mm, freeboard ([\d.]+) mm$/,

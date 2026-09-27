@@ -637,26 +637,34 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
 
     // V0.5 P0: printed ZeroClips seated on the planned stations (main seam
     // only). Built in the SEATED pose — the jaws' designed elastic overlap
-    // with the rail is the only allowed jacket contact; anything more fails
-    // validation and the package falls back to binder clamps with a warning.
+    // with the rail is the only allowed jacket contact. Stations that fail
+    // validation are SKIPPED (warning); the package falls back to binder only
+    // if fewer than two stations survive.
     let zeroClip: MeshArrays | null = null;
     if (params.clampMode === 'printed' || params.clampMode === 'hybrid') {
       progress('Building ZeroClips', 0.95);
       clampPlan.mode = params.clampMode;
-      let fallback: string | null = null;
+      const skippedIdx = new Set<number>();
+      const reasons: string[] = [];
+      let built = 0;
       for (const st of clampPlan.stations) {
         const clip = track(buildZeroClip({ csCtor, station: st, pull: pv }));
         const check = validateZeroClip({ clip, jacket });
         if (!check.ok) {
-          fallback = `ZeroClip station ${st.index}: ${check.reason} — falling back to binder clamps`;
-          break;
+          skippedIdx.add(st.index);
+          reasons.push(`station ${st.index}: ${check.reason}`);
+          continue;
         }
         if (!zeroClip) zeroClip = instanceToMeshArrays(clip);
+        built++;
       }
-      if (fallback) {
-        warnings.push(fallback);
+      if (built < 2) {
+        warnings.push(`ZeroClips skipped: ${reasons.join('; ')} — fewer than 2 usable stations, falling back to binder clamps`);
         clampPlan.mode = 'binder';
         zeroClip = null;
+      } else if (skippedIdx.size > 0) {
+        warnings.push(`ZeroClips: skipped ${[...skippedIdx].map(i => `station ${i}`).join(', ')} (${reasons.join('; ')}) — the remaining ${built} stations hold the seam; add binder clips between them`);
+        clampPlan.stations = clampPlan.stations.filter(st => !skippedIdx.has(st.index));
       }
     }
 

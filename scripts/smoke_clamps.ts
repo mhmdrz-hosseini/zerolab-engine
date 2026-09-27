@@ -36,7 +36,7 @@ function distToRay(px: number, py: number, deg: number, reach: number): number {
 }
 
 // --- 1. plain ring: count formula, determinism, thickness ---
-const R_OUT = 60, R_IN = 58;
+const R_OUT = 60, R_IN = 53; // 7 mm band = the real rail's radial width
 const rail = band(R_OUT, R_IN);
 const planA = planClampStations({ railSection: rail, axis: 'X', frame });
 const perim = 2 * Math.PI * ((R_OUT + R_IN) / 2);
@@ -113,7 +113,7 @@ check('clip tangent extent = clip width + closing fillet growth', Math.abs(Math.
 check('clip build deterministic', Math.abs(clipA.volume() - clipB.volume()) < 1e-6, `vol ${clipA.volume().toFixed(2)} mm³`);
 
 // seat the clip against the synthetic rail band solid (the ring extruded ±2.5 along pull)
-const bandSolid = prismOnPull(rail, 0, -2.5, 2.5);
+const bandSolid = prismOnPull(rail, 0, -2.5, 2.5); // rail = the 7 mm band at pull ±2.5
 const seat = validateZeroClip({ clip: clipA, jacket: bandSolid });
 check('seated clip engages rail within the designed press volume', seat.ok && seat.pressVolumeMm3 > 0.5 && seat.pressVolumeMm3 < 12,
   seat.ok ? `press ${seat.pressVolumeMm3.toFixed(2)} mm³ (designed ≈ 2 × 1.5 × 18 × 0.15 ≈ 8 mm³)` : seat.reason ?? 'failed');

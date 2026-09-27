@@ -178,10 +178,9 @@ export function planClampStations(deps: {
   }
 
   const count = Math.max(2, Math.ceil(totalUsable / CLAMP.pitchMm) + 1);
-  // cumulative arc length along the resampled loop (for bulge-window walks)
+  // cumulative arc length along the resampled loop (for straight-run walks)
   const cum = new Float64Array(m);
   for (let k = 1; k < m; k++) cum[k] = cum[k - 1] + step(k - 1);
-  const arcDist = (a: number, b: number): number => Math.abs(cum[b] - cum[a]);
   const placeAt = (target: number): { q: number[]; seg: [number[], number[]]; at: number } => {
     let acc = 0;
     for (const r of runs) {
@@ -235,19 +234,34 @@ export function planClampStations(deps: {
     // envelope ratchet steps — the spine and lead-in must vault over the
     // farthest outward excursion or the seated clip collides with the rail's
     // outer-end face (measured 41.7 mm³ overlap on the sheep without this).
-    let bulge = 0;
-    for (let j = at; j < m && arcDist(at, j) <= CLAMP.clipWidthMm / 2; j++) {
-      const dx = P[j][0] - q[0], dy = P[j][1] - q[1];
-      bulge = Math.max(bulge, dx * nx + dy * ny);
-    }
-    for (let j = at; j >= 0 && arcDist(at, j) <= CLAMP.clipWidthMm / 2; j--) {
-      const dx = P[j][0] - q[0], dy = P[j][1] - q[1];
-      bulge = Math.max(bulge, dx * nx + dy * ny);
-    }
+    // Outward bulge + straight-run width: the clip is extruded STRAIGHT along
+    // the tangent, but the real edge curves and the envelope ratchet steps.
+    // The spine vaults the outward bulge; the WIDTH shrinks where the edge
+    // retreats OR where the rail band goes thin (the cavity can swallow the
+    // band locally — measured on Spider-Man station 0: 0.39 mm³ contact).
+    let bulge = 0, straight = CLAMP.clipWidthMm;
+    const walk = (dir: 1 | -1): number => {
+      let d = 0;
+      for (let j = at; ; j += dir) {
+        if (j < 0 || j >= m) break;
+        const step2 = Math.abs(cum[j] - cum[at]);
+        if (step2 > 12) break;
+        const dx = P[j][0] - q[0], dy = P[j][1] - q[1];
+        const dev = dx * nx + dy * ny;
+        bulge = Math.max(bulge, dev);
+        if (dev < -1.0) { d = step2; break; } // edge retreats — the face ends here
+        if (thicknessAt(P[j]) < 3) { d = step2; break; } // band pinched by the cavity
+        d = step2;
+      }
+      return d;
+    };
+    straight = Math.min(CLAMP.clipWidthMm, walk(1) + walk(-1));
+    if (thicknessAt(q) < 3) straight = Math.min(straight, 8);
     stations.push({
       position: to3(q[0], q[1]),
       normal: [n3[0], n3[1], n3[2]],
       bulgeMm: Number(Math.max(0, bulge).toFixed(2)),
+      clipWidthMm: Math.max(8, Math.floor(straight)),
       railThickness: thicknessAt(q),
       index: k,
     });
@@ -278,7 +292,9 @@ export function buildZeroClip(deps: {
   interferenceMm?: number;
 }): ManifoldInstance {
   const { csCtor, station, pull } = deps;
-  const width = deps.widthMm ?? CLAMP.clipWidthMm;
+  // the clip never exceeds the station's straight run — a wider flat clip
+  // loses jaw contact on curved sections
+  const width = Math.min(deps.widthMm ?? CLAMP.clipWidthMm, station.clipWidthMm ?? CLAMP.clipWidthMm);
   const interference = deps.interferenceMm ?? CLAMP.clipInterferenceMm;
   const legT = CLAMP.clipLegTMm;
   const tipU = CLAMP.clipTipUMm;

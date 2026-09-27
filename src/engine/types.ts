@@ -66,6 +66,9 @@ export interface ClampStation {
   normal: [number, number, number];   // outward rail-face normal at the station (unit)
   bulgeMm: number;                    // max outward deviation of the rail's outer edge from the
                                       // tangent line within the clip window (curvature + ratchet steps)
+  clipWidthMm?: number;               // straight-run width for this station (≤ the prototype 18 mm) —
+                                      // a flat clip wider than the local straight run loses jaw contact;
+                                      // omitted = full prototype width (straight coupon/ear stubs)
   railThickness: number;              // measured radial width of the rail band here (mm)
   index: number;
 }

@@ -41,7 +41,7 @@ const en = {
   'analysis.verdict.trapped': ' — {p}% trapped rays, extraction sim will verify.',
   'analysis.generateBtn': 'Generate pour box — M2',
   'analysis.generateBtnTitle': 'The real generate button lives in the panel below',
-  'gen.title': '3 · Generate pour box',
+  'gen.title': '3 · Size & build',
   'preset.small': 'Small detail',
   'preset.standard': 'Standard candle',
   'preset.rugged': 'Rugged',
@@ -124,6 +124,22 @@ const en = {
   'view.explode': 'Exploded view',
   'view.schematic': 'Schematic',
   'view.real': 'Real',
+  'size.sliderLabel': 'Largest mold dimension',
+  'size.cm': 'cm',
+  'size.preset.cupcake': 'Cupcake',
+  'size.preset.small': 'Small',
+  'size.preset.medium': 'Medium',
+  'size.preset.large': 'Large',
+  'size.preset.max': 'Printer max',
+  'size.silicone': 'Silicone pour',
+  'size.moldWeight': 'Printed mold',
+  'size.masterWeight': 'Casting resin (master copy)',
+  'size.dims': 'Mold outer: {d} mm',
+  'size.estimateNote': 'estimates while dragging — regenerate for exact values',
+  'size.smallHint':
+    'At this scale the {g} mm gap is large relative to the model — the “Small detail” preset (6 mm) wastes less silicone.',
+  'size.densityNote': 'mass ≈ volume × 1.2 g/cm³ (printed resin/PLA) · casting resin ≈ 1.13 g/cm³',
+  'size.range': '5–20 cm — cupcake minimum, 20 cm printer cap per dimension',
 };
 
 export type Key = keyof typeof en;
@@ -161,7 +177,7 @@ const fa: Record<Key, string> = {
   'analysis.verdict.trapped': ' — {p}٪ پرتو گیرکرده؛ شبیه‌سازی جداسازی تأیید می‌کند.',
   'analysis.generateBtn': 'ساخت قالب — به‌زودی',
   'analysis.generateBtnTitle': 'دکمه‌ی اصلی ساخت در پنل پایین است',
-  'gen.title': '۳ · ساخت قالب',
+  'gen.title': '۳ · اندازه و ساخت',
   'preset.small': 'جزئیات ریز',
   'preset.standard': 'شمع استاندارد',
   'preset.rugged': 'ضدضربه',
@@ -243,6 +259,22 @@ const fa: Record<Key, string> = {
   'view.explode': 'نمای بازشده',
   'view.schematic': 'شماتیک',
   'view.real': 'واقعی',
+  'size.sliderLabel': 'بزرگ‌ترین بعد قالب',
+  'size.cm': 'سانتی‌متر',
+  'size.preset.cupcake': 'کاپ‌کیک',
+  'size.preset.small': 'کوچک',
+  'size.preset.medium': 'متوسط',
+  'size.preset.large': 'بزرگ',
+  'size.preset.max': 'حداکثر چاپ',
+  'size.silicone': 'سیلیکون موردنیاز',
+  'size.moldWeight': 'قالب چاپی',
+  'size.masterWeight': 'رزین ریخته‌گری (کپی مستر)',
+  'size.dims': 'ابعاد بیرونی قالب: {d} میلی‌متر',
+  'size.estimateNote': 'مقادیر هنگام کشیدن، برآورد هستند — برای عدد دقیق بسازید',
+  'size.smallHint':
+    'در این اندازه، گپ {g} میلی‌متری نسبت به مدل بزرگ است — پریست «جزئیات ریز» (6 میلی‌متر) سیلیکون کمتری هدر می‌دهد.',
+  'size.densityNote': 'جرم ≈ حجم × 1.2 گرم بر سانتی‌متر مکعب (رزین/PLA چاپی) · رزین ریخته‌گری ≈ 1.13',
+  'size.range': '۵ تا ۲۰ سانتی‌متر — کف کاپ‌کیک، سقف چاپ ۲۰ سانتی‌متر در هر بعد',
 };
 
 function interpolate(s: string, vars?: Record<string, string | number>): string {

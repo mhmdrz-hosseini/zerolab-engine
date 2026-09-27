@@ -39,6 +39,20 @@ const WALLS = [
 type WallId = (typeof WALLS)[number]['id'];
 type EnvelopeId = (typeof ENVELOPES)[number]['id'];
 
+// mold size presets (largest dimension of the whole printed mold, cm):
+// cupcake minimum → printer bed cap
+const SIZE_PRESETS = [
+  { id: 'cupcake', cm: 5, labelKey: 'size.preset.cupcake' },
+  { id: 'small', cm: 8, labelKey: 'size.preset.small' },
+  { id: 'medium', cm: 12, labelKey: 'size.preset.medium' },
+  { id: 'large', cm: 16, labelKey: 'size.preset.large' },
+  { id: 'max', cm: 20, labelKey: 'size.preset.max' },
+] as const;
+
+const PRINT_DENSITY = 1.2; // g/cm³ — SLA resin / PLA
+const CAST_DENSITY = 1.13; // g/cm³ — epoxy casting resin
+const FRAME_CONST = 30;    // coarse pre-generate outer-dim constant (plate margin + freeboard)
+
 export function GeneratePanel() {
   const report = useStore((s) => s.report);
   const result = useStore((s) => s.result);
@@ -63,6 +77,7 @@ export function GeneratePanel() {
   const [material, setMaterial] = useState<'silicone' | 'hotWax'>('silicone');
   const [clampMode, setClampMode] = useState<'binder' | 'printed' | 'hybrid'>('binder');
   const [baseLock, setBaseLock] = useState(false);
+  const [targetCm, setTargetCm] = useState<number | null>(null); // null = track actual
 
   if (!report) return null;
   const p = PRESETS.find((x) => x.id === preset)!;
@@ -80,9 +95,116 @@ export function GeneratePanel() {
   };
   const busy = phase === 'busy';
 
+  // ---- size solving ----
+  // masterDim = as-ingested bbox (scale 1); k0/outer0 = the last generation.
+  // outer_i(k) = outer0_i + (k − k0)·masterDim_i is exact: master-derived
+  // geometry is linear in k, plate/frame constants (V02) are absolute.
+  const masterDim = report.bbox.dim;
+  const maxMasterDim = Math.max(...masterDim);
+  const k0 = result?.params.masterScale ?? 1;
+  const outer0 = result?.outerDim ?? null;
+  const actualCm = outer0 ? Math.max(...outer0) / 10 : (maxMasterDim + FRAME_CONST) / 10;
+  const cm = targetCm ?? Math.round(actualCm * 10) / 10;
+
+  const solveK = (targetMm: number): number => {
+    let kk = Infinity;
+    for (let i = 0; i < 3; i++) {
+      const d = masterDim[i];
+      if (d <= 0.001) continue;
+      const o = outer0 ? outer0[i] : masterDim[i] + FRAME_CONST;
+      kk = Math.min(kk, k0 + (targetMm - o) / d);
+    }
+    if (!Number.isFinite(kk)) kk = 1;
+    // keep the scaled master inside the ingest window (grid budget)
+    kk = Math.min(kk, 280 / maxMasterDim);
+    kk = Math.max(kk, 15 / maxMasterDim, 0.05);
+    return kk;
+  };
+  const k = solveK(cm * 10);
+
+  const commitSize = (cmValue: number) => {
+    if (busy) return;
+    generate({ ...params, masterScale: solveK(cmValue * 10) });
+  };
+
+  // ---- live material estimates (exact once k === k0, i.e. after regen) ----
+  const ratio = k / k0;
+  const siliconeMl = result ? result.siliconeMl * ratio ** 3 : null;
+  const moldG = result?.partVolumesCm3
+    ? Object.values(result.partVolumesCm3).reduce((a, b) => a + b, 0) * ratio ** 3 * PRINT_DENSITY
+    : null;
+  const masterG = report.volumeMl * k ** 3 * CAST_DENSITY;
+  const predOuter = outer0
+    ? outer0.map((o, i) => Math.max(1, o + (k - k0) * masterDim[i]))
+    : masterDim.map((d) => d * k + FRAME_CONST);
+  const smallHint = maxMasterDim * k < 60 && p.gap >= 6;
+  const pending = targetCm !== null && (busy || Math.abs(k - k0) > 1e-4);
+
   return (
     <section className="panel">
       <div className="panel-title">{t('gen.title')}</div>
+
+      <div className="size-row">
+        <span className="size-label">{t('size.sliderLabel')}</span>
+        <input
+          className="size-num"
+          type="number" dir="ltr" min={5} max={20} step={0.5}
+          value={cm}
+          disabled={busy}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            if (v >= 5 && v <= 20) setTargetCm(v);
+          }}
+          onBlur={(e) => {
+            const v = Number(e.target.value);
+            if (v >= 5 && v <= 20) commitSize(v);
+          }}
+        />
+        <span className="size-unit">{t('size.cm')}</span>
+      </div>
+      <input
+        type="range" min={5} max={20} step={0.5}
+        value={cm}
+        disabled={busy}
+        style={{ ['--slider-fill' as never]: `${((cm - 5) / 15) * 100}%` }}
+        onChange={(e) => setTargetCm(Number(e.target.value))}
+        onPointerUp={() => commitSize(cm)}
+        onBlur={() => targetCm !== null && commitSize(cm)}
+      />
+      <div className="chips" style={{ marginTop: 0 }}>
+        {SIZE_PRESETS.map((x) => (
+          <button
+            key={x.id}
+            className={`chip${Math.abs(cm - x.cm) < 0.01 ? ' on' : ''}`}
+            onClick={() => { setTargetCm(x.cm); commitSize(x.cm); }}
+            disabled={busy}
+          >
+            {t(x.labelKey)} · {x.cm}
+          </button>
+        ))}
+      </div>
+
+      <div className="size-stats" title={t('size.densityNote')}>
+        <div className="size-stat">
+          <b>{siliconeMl != null ? siliconeMl.toFixed(0) : '—'}</b>
+          <span>mL · {t('size.silicone')}</span>
+        </div>
+        <div className="size-stat">
+          <b>{moldG != null ? moldG.toFixed(0) : '—'}</b>
+          <span>g · {t('size.moldWeight')}</span>
+        </div>
+        <div className="size-stat">
+          <b>{masterG.toFixed(0)}</b>
+          <span>g · {t('size.masterWeight')}</span>
+        </div>
+      </div>
+      <div className="hint dim" style={{ margin: '4px 0 0' }}>
+        {t('size.dims', { d: predOuter.map((x) => x.toFixed(0)).join(' × ') })}
+        {pending ? ` · ${t('size.estimateNote')}` : ''}
+      </div>
+      {smallHint && <div className="hint dim" style={{ color: 'var(--warn)', margin: '4px 0 0' }}>{t('size.smallHint', { g: p.gap })}</div>}
+      <div className="hint dim" style={{ margin: '2px 0 0', fontSize: 10.5 }}>{t('size.range')}</div>
+
       <div className="chips">
         {PRESETS.map((x) => (
           <button key={x.id} className={`chip${preset === x.id ? ' on' : ''}`} onClick={() => setPreset(x.id)} disabled={busy}>
@@ -135,7 +257,7 @@ export function GeneratePanel() {
           {t('gen.baseLock')}
         </button>
       </div>
-      <button className="btn primary wide" onClick={() => generate(params)} disabled={busy}>
+      <button className="btn primary wide" onClick={() => generate({ ...params, masterScale: k })} disabled={busy}>
         {result ? t('gen.regenerate') : t('gen.generate')}
       </button>
 
@@ -168,10 +290,10 @@ export function GeneratePanel() {
           {(() => {
             const pr = result.printability;
             if (!pr) return null;
-            const jackets = Object.entries(pr).filter(([k]) => k.startsWith('jacket'));
+            const jackets = Object.entries(pr).filter(([k2]) => k2.startsWith('jacket'));
             return (
               <div className="hint dim">
-                {t('gen.support', { list: jackets.map(([k, r]) => `${k === 'jacket_B' ? 'B' : k.replace('jacket_', '')} ${r.overhangAreaMm2}mm²`).join(' · ') })}
+                {t('gen.support', { list: jackets.map(([k2, r]) => `${k2 === 'jacket_B' ? 'B' : k2.replace('jacket_', '')} ${r.overhangAreaMm2}mm²`).join(' · ') })}
               </div>
             );
           })()}
@@ -189,7 +311,7 @@ export function GeneratePanel() {
                   )}
                 </span>
                 {trapped > 5 && result.panels !== 3 && (
-                  <button className="chip" onClick={() => generate({ ...params, panels: 3 })} disabled={busy} title={t('gen.threePieceBtnTitle')}>
+                  <button className="chip" onClick={() => generate({ ...params, masterScale: k, panels: 3 })} disabled={busy} title={t('gen.threePieceBtnTitle')}>
                     {t('gen.threePieceBtn')}
                   </button>
                 )}

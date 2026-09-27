@@ -53,14 +53,14 @@ export default function App() {
   const gridY = -(dim[1] / 2) - 4;
 
   const layerDefs: LayerDef[] = [];
-  if (preview && layers.master) layerDefs.push({ mesh: preview, color: '#9db4c0', opacity: failure ? 0.9 : 0.5, order: 2, trap: failure?.trapFlags });
-  if (result && layers.skin) layerDefs.push({ mesh: result.parts.siliconeSkin, color: '#4fc3a1', opacity: 0.45, order: 3 });
-  if (result && layers.jacketA) layerDefs.push({ mesh: result.parts.jacketA, color: '#7d9dc4', opacity: 0.4, order: 4 });
-  if (result && layers.jacketB) layerDefs.push({ mesh: result.parts.jacketB, color: '#c47d9d', opacity: 0.4, order: 4 });
-  if (result && layers.jacketB1) layerDefs.push({ mesh: result.parts.jacketB1, color: '#7dc4a8', opacity: 0.4, order: 4 });
-  if (result && layers.jacketB2) layerDefs.push({ mesh: result.parts.jacketB2, color: '#c4b07d', opacity: 0.4, order: 4 });
-  if (result && layers.plate) layerDefs.push({ mesh: result.parts.basePlate, color: '#b3a184', opacity: 0.85, order: 1 });
-  if (result && layers.outer) layerDefs.push({ mesh: result.parts.jacketOuter, color: '#8a97a5', opacity: 0.12, order: 0 });
+  if (preview && layers.master) layerDefs.push({ mesh: preview, color: '#9fb6c6', opacity: failure ? 0.92 : 0.5, order: 2, trap: failure?.trapFlags });
+  if (result && layers.skin) layerDefs.push({ mesh: result.parts.siliconeSkin, color: '#5ec9a8', opacity: 0.45, order: 3 });
+  if (result && layers.jacketA) layerDefs.push({ mesh: result.parts.jacketA, color: '#7fa8d6', opacity: 0.4, order: 4 });
+  if (result && layers.jacketB) layerDefs.push({ mesh: result.parts.jacketB, color: '#d686a2', opacity: 0.4, order: 4 });
+  if (result && layers.jacketB1) layerDefs.push({ mesh: result.parts.jacketB1, color: '#7fcbb0', opacity: 0.4, order: 4 });
+  if (result && layers.jacketB2) layerDefs.push({ mesh: result.parts.jacketB2, color: '#d6b47f', opacity: 0.4, order: 4 });
+  if (result && layers.plate) layerDefs.push({ mesh: result.parts.basePlate, color: '#c9b391', opacity: 0.9, order: 1 });
+  if (result && layers.outer) layerDefs.push({ mesh: result.parts.jacketOuter, color: '#a9b6c4', opacity: 0.14, order: 0 });
 
   return (
     <div className="app">
@@ -84,7 +84,8 @@ export default function App() {
           {t('lang.switch')}
         </button>
       </header>
-      <aside className="sidebar">
+      <div className="app-body">
+        <aside className="sidebar">
         <ImportPanel />
         {report && <AnalysisPanel report={report} />}
         <GeneratePanel />
@@ -108,7 +109,7 @@ export default function App() {
           </section>
         )}
       </aside>
-      <main className="stage">
+        <main className="stage">
         {layerDefs.length > 0 ? (
           <Viewer layers={layerDefs} center={center} radius={radius} gridY={gridY} />
         ) : (
@@ -118,6 +119,7 @@ export default function App() {
           </div>
         )}
       </main>
+      </div>
     </div>
   );
 }

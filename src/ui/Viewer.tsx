@@ -73,11 +73,11 @@ export function Viewer({
 }) {
   return (
     <Canvas camera={{ fov: 45, near: 1, far: 8000, position: [200, 140, 260] }} dpr={[1, 2]}>
-      <color attach="background" args={['#15181c']} />
-      <hemisphereLight args={['#cfd8dc', '#1a1d21', 0.9]} />
-      <directionalLight position={[180, 260, 160]} intensity={2.2} />
-      <directionalLight position={[-160, 80, -140]} intensity={0.5} />
-      <gridHelper args={[600, 60, '#2c3238', '#20242a']} position={[0, gridY, 0]} />
+      <color attach="background" args={['#e9edf4']} />
+      <hemisphereLight args={['#ffffff', '#dfe5ee', 1.1]} />
+      <directionalLight position={[180, 260, 160]} intensity={1.7} />
+      <directionalLight position={[-160, 80, -140]} intensity={0.45} />
+      <gridHelper args={[600, 60, '#ccd4e0', '#dde3ec']} position={[0, gridY, 0]} />
       <group position={[-center[0], -center[1], -center[2]]}>
         {layers
           .slice()

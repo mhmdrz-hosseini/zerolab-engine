@@ -5,8 +5,11 @@ import { GeneratePanel } from './ui/GeneratePanel';
 import { ImportPanel } from './ui/ImportPanel';
 import { Viewer } from './ui/Viewer';
 import { useStore } from './state/store';
+import { applyDocumentLang, te, useT } from './i18n';
 
 export default function App() {
+  const lang = useStore((s) => s.lang);
+  const setLang = useStore((s) => s.setLang);
   const phase = useStore((s) => s.phase);
   const progress = useStore((s) => s.progress);
   const error = useStore((s) => s.error);
@@ -15,6 +18,11 @@ export default function App() {
   const preview = useStore((s) => s.preview);
   const result = useStore((s) => s.result);
   const layers = useStore((s) => s.layers);
+  const t = useT();
+
+  useEffect(() => {
+    applyDocumentLang(lang);
+  }, [lang]);
 
   // Embed contract (standalone-first): the parent platform drives this module
   // through an iframe via postMessage. See README → "Embedding".
@@ -58,8 +66,23 @@ export default function App() {
     <div className="app">
       <header className="topbar">
         <span className="logo">MATRIX MOLD</span>
-        <span className="subtitle">Silicone pour box generator · V0.1-M2</span>
-        <span className={`status ${phase}`}>{phase === 'busy' ? `·· ${progress?.stage ?? 'working'}` : phase === 'ready' ? 'ready' : phase === 'error' ? 'error' : 'idle'}</span>
+        <span className="subtitle">{t('app.subtitle')}</span>
+        <span className={`status ${phase}`}>
+          {phase === 'busy'
+            ? `·· ${progress ? te(lang, progress.stage) : t('status.working')}`
+            : phase === 'ready'
+              ? t('status.ready')
+              : phase === 'error'
+                ? t('status.error')
+                : t('status.idle')}
+        </span>
+        <button
+          className="chip lang-switch"
+          onClick={() => setLang(lang === 'fa' ? 'en' : 'fa')}
+          title={lang === 'fa' ? 'Switch to English' : 'تغییر به فارسی'}
+        >
+          {t('lang.switch')}
+        </button>
       </header>
       <aside className="sidebar">
         <ImportPanel />
@@ -67,24 +90,21 @@ export default function App() {
         <GeneratePanel />
         {phase === 'busy' && progress && (
           <section className="panel">
-            <div className="progress-label">{progress.stage}</div>
+            <div className="progress-label">{te(lang, progress.stage)}</div>
             <div className="progress-track"><div className="progress-fill" style={{ width: `${Math.round(progress.pct * 100)}%` }} /></div>
           </section>
         )}
         {phase === 'error' && error && (
           <section className="panel error-panel">
-            <div className="panel-title">Error</div>
-            <div className="warning">{error}</div>
+            <div className="panel-title">{t('panel.error')}</div>
+            <div className="warning">{te(lang, error)}</div>
           </section>
         )}
         {failure && (
           <section className="panel error-panel">
-            <div className="panel-title">Moldability failure</div>
-            <div className="warning">{failure.message}</div>
-            <div className="hint dim">
-              Red regions on the model trap the jacket on every candidate split axis (±{failure.axis} was the best attempt).
-              Multi-piece jackets and local cores — the fix for shapes like this — land in V0.2.
-            </div>
+            <div className="panel-title">{t('panel.failure')}</div>
+            <div className="warning">{te(lang, failure.message)}</div>
+            <div className="hint dim">{t('failure.hint', { axis: failure.axis })}</div>
           </section>
         )}
       </aside>
@@ -93,8 +113,8 @@ export default function App() {
           <Viewer layers={layerDefs} center={center} radius={radius} gridY={gridY} />
         ) : (
           <div className="empty">
-            <div className="empty-title">No master loaded</div>
-            <div className="hint">Import a binary STL — analysis (watertight check, decimation, straight-pull ranking) runs automatically.</div>
+            <div className="empty-title">{t('empty.title')}</div>
+            <div className="hint">{t('empty.hint')}</div>
           </div>
         )}
       </main>

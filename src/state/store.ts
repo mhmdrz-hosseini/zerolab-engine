@@ -2,6 +2,7 @@
 // report and transferred result arrays for rendering.
 import { create } from 'zustand';
 import type { AnalysisReport, GenerateParams, GenerateResult, MeshArrays, WorkerResponse } from '../engine/types';
+import { applyDocumentLang, type Lang } from '../i18n';
 
 export type Phase = 'idle' | 'busy' | 'ready' | 'error';
 
@@ -23,6 +24,8 @@ export interface FailureInfo {
 }
 
 interface StoreState {
+  lang: Lang;
+  setLang: (l: Lang) => void;
   phase: Phase;
   progress: { stage: string; pct: number } | null;
   error: string | null;
@@ -88,6 +91,11 @@ function getWorker(): Worker {
 }
 
 export const useStore = create<StoreState>((set) => ({
+  lang: 'fa',
+  setLang: (l) => {
+    applyDocumentLang(l);
+    set({ lang: l });
+  },
   phase: 'idle',
   progress: null,
   error: null,

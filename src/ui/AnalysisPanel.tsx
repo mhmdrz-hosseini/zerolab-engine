@@ -1,4 +1,6 @@
 import type { AnalysisReport } from '../engine/types';
+import { te, useT } from '../i18n';
+import { useStore } from '../state/store';
 
 function Badge({ ok, children }: { ok: boolean; children: string }) {
   return <span className={`badge ${ok ? 'good' : 'warn'}`}>{children}</span>;
@@ -9,18 +11,19 @@ function fmt(n: number, d = 1): string {
 }
 
 export function AnalysisPanel({ report }: { report: AnalysisReport }) {
+  const t = useT();
   const best = report.axes[0];
   return (
     <section className="panel">
-      <div className="panel-title">2 · Moldability analysis</div>
+      <div className="panel-title">{t('analysis.title')}</div>
       <div className="badges">
-        <Badge ok={report.watertight}>{report.watertight ? 'Watertight' : 'Not watertight'}</Badge>
-        <span className="badge dim">{Math.round(report.triCount / 1000)}k tris → {Math.round(report.analysisTris / 1000)}k analysis</span>
-        <span className="badge dim">{fmt(report.volumeMl, 0)} mL master</span>
+        <Badge ok={report.watertight}>{report.watertight ? t('analysis.watertight') : t('analysis.notWatertight')}</Badge>
+        <span className="badge dim">{t('analysis.tris', { n: Math.round(report.triCount / 1000), m: Math.round(report.analysisTris / 1000) })}</span>
+        <span className="badge dim">{t('analysis.volume', { v: fmt(report.volumeMl, 0) })}</span>
       </div>
       <table className="axes">
         <thead>
-          <tr><th>Pull axis</th><th>Trapped rays</th><th>Max layers</th></tr>
+          <tr><th>{t('analysis.th.axis')}</th><th>{t('analysis.th.trapped')}</th><th>{t('analysis.th.layers')}</th></tr>
         </thead>
         <tbody>
           {report.axes.map((ax, i) => (
@@ -33,18 +36,24 @@ export function AnalysisPanel({ report }: { report: AnalysisReport }) {
         </tbody>
       </table>
       <div className="verdict">
-        Proposed split: <b>2-piece planar, pull ±{best.axis}</b>
-        {best.trappedPct < 1 ? ' — straight pull clean.' : ` — ${fmt(best.trappedPct)}% trapped rays, extraction sim will verify.`}
+        {t('analysis.verdict', { axis: best.axis })}
+        {best.trappedPct < 1 ? t('analysis.verdict.clean') : t('analysis.verdict.trapped', { p: fmt(best.trappedPct) })}
       </div>
       {report.warnings.map((w) => (
-        <div key={w} className="warning">⚠ {w}</div>
+        <EngineText key={w} className="warning" text={w} prefix="⚠ " />
       ))}
-      <button className="btn primary wide" disabled title="Generate lands in M2 (SDF offset engine)">
-        Generate pour box — M2
+      <button className="btn primary wide" disabled title={t('analysis.generateBtnTitle')}>
+        {t('analysis.generateBtn')}
       </button>
       <div className="bbox mono">
         {fmt(report.bbox.dim[0])} × {fmt(report.bbox.dim[1])} × {fmt(report.bbox.dim[2])} mm
       </div>
     </section>
   );
+}
+
+/** Renders an engine-emitted string through the fa/en pattern table. */
+export function EngineText({ text, className, prefix }: { text: string; className?: string; prefix?: string }) {
+  const lang = useStore((s) => s.lang);
+  return <div className={className}>{prefix}{te(lang, text)}</div>;
 }

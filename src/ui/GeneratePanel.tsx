@@ -1,21 +1,23 @@
 import { useState } from 'react';
 import type { GenerateParams } from '../engine/types';
 import { useStore } from '../state/store';
+import { te, useT } from '../i18n';
+import { EngineText } from './AnalysisPanel';
 
 const PRESETS = [
-  { id: 'small', label: 'Small detail', gap: 6, wall: 5 },
-  { id: 'standard', label: 'Standard candle', gap: 8, wall: 5 },
-  { id: 'rugged', label: 'Rugged', gap: 10, wall: 5 },
+  { id: 'small', labelKey: 'preset.small', gap: 6, wall: 5 },
+  { id: 'standard', labelKey: 'preset.standard', gap: 8, wall: 5 },
+  { id: 'rugged', labelKey: 'preset.rugged', gap: 10, wall: 5 },
 ] as const;
 type PresetId = (typeof PRESETS)[number]['id'];
 
 // Joint-fit ladder (printability audit §12): 0.25 mm is only safe on a
 // calibrated machine — a 160 mm tongue accumulates dimensional error.
 const FITS = [
-  { id: 'resin', label: 'Resin', wall: 2, clearance: 0.15, hint: '0.15 mm joint clearance' },
-  { id: 'calibrated', label: 'Calibrated FDM', wall: 5, clearance: 0.25, hint: '0.25 mm joint clearance' },
-  { id: 'standard', label: 'Standard FDM', wall: 5, clearance: 0.35, hint: '0.35 mm joint clearance' },
-  { id: 'loose', label: 'Loose FDM', wall: 5, clearance: 0.45, hint: '0.45 mm joint clearance' },
+  { id: 'resin', labelKey: 'fit.resin', wall: 2, clearance: 0.15, hintKey: 'fit.hint.resin' },
+  { id: 'calibrated', labelKey: 'fit.calibrated', wall: 5, clearance: 0.25, hintKey: 'fit.hint.calibrated' },
+  { id: 'standard', labelKey: 'fit.standard', wall: 5, clearance: 0.35, hintKey: 'fit.hint.standard' },
+  { id: 'loose', labelKey: 'fit.loose', wall: 5, clearance: 0.45, hintKey: 'fit.hint.loose' },
 ] as const;
 type FitId = (typeof FITS)[number]['id'];
 
@@ -23,16 +25,16 @@ type FitId = (typeof FITS)[number]['id'];
 // jacket slides off rigidly; half-gap measured extraction-safe on the corpus
 // with ~5–10% silicone savings and a tighter median hug.
 const ENVELOPES = [
-  { id: 'full', label: 'Full clearance', note: 'V0.3 window — maximum release margin' },
-  { id: 'tight', label: 'Tight hug', note: '½-gap window — less silicone, test-print first' },
+  { id: 'full', labelKey: 'env.full', noteKey: 'env.note.full' },
+  { id: 'tight', labelKey: 'env.tight', noteKey: 'env.note.tight' },
 ] as const;
 // Jacket wall (audit §1/§3): the seam rails and seating rim are reinforced by
 // construction; the wall chip sizes the body shell. 5 mm remains the default
 // until the physical coupon trial (core invariant 12).
 const WALLS = [
-  { id: 'light', label: 'Light · 4 mm', wall: 4, note: 'audit-recommended body wall with reinforced rails' },
-  { id: 'standard', label: 'Standard · 5 mm', wall: 5, note: 'V0.3 default — maximum margin' },
-  { id: 'heavy', label: 'Heavy · 6.5 mm', wall: 6.5, note: 'production / rough handling' },
+  { id: 'light', labelKey: 'wall.light', wall: 4, noteKey: 'wall.note.light' },
+  { id: 'standard', labelKey: 'wall.standard', wall: 5, noteKey: 'wall.note.standard' },
+  { id: 'heavy', labelKey: 'wall.heavy', wall: 6.5, noteKey: 'wall.note.heavy' },
 ] as const;
 type WallId = (typeof WALLS)[number]['id'];
 type EnvelopeId = (typeof ENVELOPES)[number]['id'];
@@ -51,6 +53,8 @@ export function GeneratePanel() {
   const requestCoupon = useStore((s) => s.requestCoupon);
   const toggleLayer = useStore((s) => s.toggleLayer);
   const phase = useStore((s) => s.phase);
+  const lang = useStore((s) => s.lang);
+  const t = useT();
   const [preset, setPreset] = useState<PresetId>('standard');
   const [fit, setFit] = useState<FitId>('standard');
   const [envelope, setEnvelope] = useState<EnvelopeId>('full');
@@ -78,74 +82,74 @@ export function GeneratePanel() {
 
   return (
     <section className="panel">
-      <div className="panel-title">3 · Generate pour box</div>
+      <div className="panel-title">{t('gen.title')}</div>
       <div className="chips">
         {PRESETS.map((x) => (
           <button key={x.id} className={`chip${preset === x.id ? ' on' : ''}`} onClick={() => setPreset(x.id)} disabled={busy}>
-            {x.label} · {x.gap}mm
+            {t(x.labelKey)} · {x.gap}mm
           </button>
         ))}
       </div>
       <div className="chips">
         {FITS.map((x) => (
-          <button key={x.id} className={`chip${fit === x.id ? ' on' : ''}`} onClick={() => setFit(x.id)} disabled={busy} title={x.hint}>
-            {x.label}
+          <button key={x.id} className={`chip${fit === x.id ? ' on' : ''}`} onClick={() => setFit(x.id)} disabled={busy} title={t(x.hintKey)}>
+            {t(x.labelKey)}
           </button>
         ))}
       </div>
       <div className="chips">
         {WALLS.map((x) => (
-          <button key={x.id} className={`chip${wall === x.id ? ' on' : ''}`} onClick={() => setWall(x.id)} disabled={busy} title={x.note}>
-            {x.label}
+          <button key={x.id} className={`chip${wall === x.id ? ' on' : ''}`} onClick={() => setWall(x.id)} disabled={busy} title={t(x.noteKey)}>
+            {t(x.labelKey)}
           </button>
         ))}
-        <button className={`chip${ribs ? ' on' : ''}`} onClick={() => setRibs(!ribs)} disabled={busy} title="four external 8 mm stiffening fins on the jacket body">
-          Ribs
+        <button className={`chip${ribs ? ' on' : ''}`} onClick={() => setRibs(!ribs)} disabled={busy} title={t('gen.ribsTitle')}>
+          {t('gen.ribs')}
         </button>
       </div>
       <div className="chips">
         {ENVELOPES.map((x) => (
-          <button key={x.id} className={`chip${envelope === x.id ? ' on' : ''}`} onClick={() => setEnvelope(x.id)} disabled={busy} title={x.note}>
-            {x.label}
+          <button key={x.id} className={`chip${envelope === x.id ? ' on' : ''}`} onClick={() => setEnvelope(x.id)} disabled={busy} title={t(x.noteKey)}>
+            {t(x.labelKey)}
           </button>
         ))}
       </div>
       <div className="chips">
-        <button className={`chip${material === 'silicone' ? ' on' : ''}`} onClick={() => setMaterial('silicone')} disabled={busy} title="room-temperature RTV pour — PLA is fine">
-          Silicone (PLA ok)
+        <button className={`chip${material === 'silicone' ? ' on' : ''}`} onClick={() => setMaterial('silicone')} disabled={busy} title={t('gen.matTitle.silicone')}>
+          {t('gen.mat.silicone')}
         </button>
-        <button className={`chip${material === 'hotWax' ? ' on' : ''}`} onClick={() => setMaterial('hotWax')} disabled={busy} title="jacket stays on while pouring hot wax — print jackets in PETG/ASA">
-          Hot wax (PETG)
+        <button className={`chip${material === 'hotWax' ? ' on' : ''}`} onClick={() => setMaterial('hotWax')} disabled={busy} title={t('gen.matTitle.hotWax')}>
+          {t('gen.mat.hotWax')}
         </button>
       </div>
-      <div className="chips" title="Printed hardware (experimental): ZeroClips print in PETG and spring onto the seam-rail stations; defaults stay binder until physical coupons pass">
-        <span className="hint dim" style={{ alignSelf: 'center' }}>Hardware:</span>
-        {([['binder', 'Binder clips', 'legacy fastening — 25–32 mm binder clips on the rail stations'],
-           ['printed', 'ZeroClips', 'printed PETG spring clips at every station (experimental)'],
-           ['hybrid', 'Hybrid', 'ZeroClips at stations + binder clips as filler (experimental)']] as const).map(([id, label, hint]) => (
-          <button key={id} className={`chip${clampMode === id ? ' on' : ''}`} onClick={() => setClampMode(id)} disabled={busy} title={hint}>
-            {label}
+      <div className="chips" title={t('gen.hardwareTitle')}>
+        <span className="hint dim" style={{ alignSelf: 'center' }}>{t('gen.hardware')}</span>
+        {([['binder', 'hw.binder', 'hw.hint.binder'],
+           ['printed', 'hw.printed', 'hw.hint.printed'],
+           ['hybrid', 'hw.hybrid', 'hw.hint.hybrid']] as const).map(([id, labelKey, hintKey]) => (
+          <button key={id} className={`chip${clampMode === id ? ' on' : ''}`} onClick={() => setClampMode(id)} disabled={busy} title={t(hintKey)}>
+            {t(labelKey)}
           </button>
         ))}
-        <button className={`chip${baseLock ? ' on' : ''}`} onClick={() => setBaseLock(!baseLock)} disabled={busy} title="two-piece collar capturing the jacket rim to the base plate (experimental — fail-soft)">
-          BaseLock
+        <button className={`chip${baseLock ? ' on' : ''}`} onClick={() => setBaseLock(!baseLock)} disabled={busy} title={t('gen.baseLockTitle')}>
+          {t('gen.baseLock')}
         </button>
       </div>
       <button className="btn primary wide" onClick={() => generate(params)} disabled={busy}>
-        {result ? 'Regenerate' : 'Generate silicone skin'}
+        {result ? t('gen.regenerate') : t('gen.generate')}
       </button>
 
       {result && (
         <div className="result-box">
           <div className="big-number">
-            {result.siliconeMl.toFixed(0)} <span className="unit">mL silicone</span>
+            {result.siliconeMl.toFixed(0)} <span className="unit">{t('gen.mlSilicone')}</span>
           </div>
           <div className="hint dim">
-            Split ±{result.axis}{result.panels === 3 ? ' · 3-piece (heavy half sub-split ±depth)' : ''}
+            {t('gen.split', { axis: result.axis })}{result.panels === 3 ? t('gen.threePiece') : ''}
             {result.panels === 3
-              ? ` · extraction A ${result.extraction.A}mm, B1 ${result.extraction.B1 ?? '—'}mm, B2 ${result.extraction.B2 ?? '—'}mm`
-              : ` · extraction A clears ${result.extraction.A}mm, B ${result.extraction.B}mm`}
-            <br />Generated in {(result.elapsedMs / 1000).toFixed(1)}s · jacket outer {result.outerDim.map((d) => d.toFixed(0)).join(' × ')} mm
+              ? t('gen.extract3', { a: result.extraction.A, b1: result.extraction.B1 ?? '—', b2: result.extraction.B2 ?? '—' })
+              : t('gen.extract2', { a: result.extraction.A, b: result.extraction.B })}
+            <br />{t('gen.elapsed', { s: (result.elapsedMs / 1000).toFixed(1), d: result.outerDim.map((d) => d.toFixed(0)).join(' × ') })}
           </div>
           {result.clearanceBand && (() => {
             const b = result.clearanceBand;
@@ -154,9 +158,10 @@ export function GeneratePanel() {
               : 0;
             return (
               <div className="hint dim">
-                Silicone efficiency: requested {b.requestedGap.toFixed(0)} mm · median hug {b.p50.toFixed(1)} mm
-                (min {b.min} · p90 {b.p90})
-                {excess > 0 ? ` · excess ≈ ${excess} mL${envelope === 'full' ? ' — Tight hug recovers part of it' : ''}` : ' · on target'}
+                {t('gen.efficiency', { g: b.requestedGap.toFixed(0), p50: b.p50.toFixed(1), min: b.min, p90: b.p90 })}
+                {excess > 0
+                  ? t(envelope === 'full' ? 'gen.efficiency.excessTight' : 'gen.efficiency.excess', { e: excess })
+                  : t('gen.efficiency.onTarget')}
               </div>
             );
           })()}
@@ -166,7 +171,7 @@ export function GeneratePanel() {
             const jackets = Object.entries(pr).filter(([k]) => k.startsWith('jacket'));
             return (
               <div className="hint dim">
-                Support forecast: {jackets.map(([k, r]) => `${k === 'jacket_B' ? 'B' : k.replace('jacket_', '')} ${r.overhangAreaMm2}mm²`).join(' · ')} unsupported @45° — details in assembly.md
+                {t('gen.support', { list: jackets.map(([k, r]) => `${k === 'jacket_B' ? 'B' : k.replace('jacket_', '')} ${r.overhangAreaMm2}mm²`).join(' · ') })}
               </div>
             );
           })()}
@@ -176,67 +181,72 @@ export function GeneratePanel() {
             return (
               <div className={`gate ${v.cls}`}>
                 <span className="gate-mark">{trapped <= 5 ? '✓' : '⚠'}</span>
-                <span className="gate-name">2-piece release confidence: {v.label}</span>
-                <span className="gate-detail">{trapped.toFixed(1)}% trapped geometry along ±{result.axis}{result.panels === 3 ? ' — 3-piece build active' : trapped > 5 ? ' — test-print before committing' : ''}</span>
+                <span className="gate-name">{t('gen.release', { level: v.label })}</span>
+                <span className="gate-detail">
+                  {t(
+                    result.panels === 3 ? 'gen.release.detail3' : trapped > 5 ? 'gen.release.detailTest' : 'gen.release.detail',
+                    { p: trapped.toFixed(1), axis: result.axis },
+                  )}
+                </span>
                 {trapped > 5 && result.panels !== 3 && (
-                  <button className="chip" onClick={() => generate({ ...params, panels: 3 })} disabled={busy} title="sub-splits the trap-heavy half along ±depth so fold channels open sideways">
-                    Generate 3-piece jacket
+                  <button className="chip" onClick={() => generate({ ...params, panels: 3 })} disabled={busy} title={t('gen.threePieceBtnTitle')}>
+                    {t('gen.threePieceBtn')}
                   </button>
                 )}
               </div>
             );
           })()}
           <div className="chips tight">
-            <button className={`chip${layers.master ? ' on' : ''}`} onClick={() => toggleLayer('master')}>Master</button>
-            <button className={`chip${layers.skin ? ' on' : ''}`} onClick={() => toggleLayer('skin')}>Silicone</button>
-            <button className={`chip${layers.jacketA ? ' on' : ''}`} onClick={() => toggleLayer('jacketA')}>Jacket A</button>
+            <button className={`chip${layers.master ? ' on' : ''}`} onClick={() => toggleLayer('master')}>{t('layer.master')}</button>
+            <button className={`chip${layers.skin ? ' on' : ''}`} onClick={() => toggleLayer('skin')}>{t('layer.skin')}</button>
+            <button className={`chip${layers.jacketA ? ' on' : ''}`} onClick={() => toggleLayer('jacketA')}>{t('layer.jacketA')}</button>
             {result.panels === 3 ? (
               <>
-                <button className={`chip${layers.jacketB1 ? ' on' : ''}`} onClick={() => toggleLayer('jacketB1')}>Jacket B1</button>
-                <button className={`chip${layers.jacketB2 ? ' on' : ''}`} onClick={() => toggleLayer('jacketB2')}>Jacket B2</button>
+                <button className={`chip${layers.jacketB1 ? ' on' : ''}`} onClick={() => toggleLayer('jacketB1')}>{t('layer.jacketB1')}</button>
+                <button className={`chip${layers.jacketB2 ? ' on' : ''}`} onClick={() => toggleLayer('jacketB2')}>{t('layer.jacketB2')}</button>
               </>
             ) : (
-              <button className={`chip${layers.jacketB ? ' on' : ''}`} onClick={() => toggleLayer('jacketB')}>Jacket B</button>
+              <button className={`chip${layers.jacketB ? ' on' : ''}`} onClick={() => toggleLayer('jacketB')}>{t('layer.jacketB')}</button>
             )}
-            <button className={`chip${layers.plate ? ' on' : ''}`} onClick={() => toggleLayer('plate')}>Base plate</button>
-            <button className={`chip${layers.outer ? ' on' : ''}`} onClick={() => toggleLayer('outer')}>Outer ghost</button>
+            <button className={`chip${layers.plate ? ' on' : ''}`} onClick={() => toggleLayer('plate')}>{t('layer.plate')}</button>
+            <button className={`chip${layers.outer ? ' on' : ''}`} onClick={() => toggleLayer('outer')}>{t('layer.outer')}</button>
           </div>
           {result.warnings.map((w) => (
-            <div key={w} className="warning">⚠ {w}</div>
+            <EngineText key={w} className="warning" text={w} prefix="⚠ " />
           ))}
           <div className="gates">
             {result.checks.map((c) => (
               <div key={c.name} className={`gate ${c.pass ? 'pass' : c.hard ? 'fail' : 'soft'}`}>
                 <span className="gate-mark">{c.pass ? '✓' : c.hard ? '✗' : '·'}</span>
-                <span className="gate-name">{c.name}</span>
-                <span className="gate-detail">{c.detail}</span>
+                <span className="gate-name">{te(lang, c.name)}</span>
+                <span className="gate-detail">{te(lang, c.detail)}</span>
               </div>
             ))}
           </div>
           {result.gatesPass ? (
             exportUrl ? (
-              <a className="btn primary wide" href={exportUrl} download={exportName ?? 'pourbox.zip'}>Download {exportName ?? 'package'}</a>
+              <a className="btn primary wide" href={exportUrl} download={exportName ?? 'pourbox.zip'}>{t('gen.download', { name: exportName ?? 'pourbox.zip' })}</a>
             ) : (
-              <button className="btn primary wide" onClick={exportPkg} disabled={busy}>Build print package (zip)</button>
+              <button className="btn primary wide" onClick={exportPkg} disabled={busy}>{t('gen.exportBtn')}</button>
             )
           ) : (
-            <button className="btn primary wide" disabled>Export blocked — hard gate failed</button>
+            <button className="btn primary wide" disabled>{t('gen.exportBlocked')}</button>
           )}
           {couponUrl ? (
-            <a className="btn wide" href={couponUrl} download={couponName ?? 'fit_coupon.stl'}>Download {couponName ?? 'fit coupon'} (STL)</a>
+            <a className="btn wide" href={couponUrl} download={couponName ?? 'fit_coupon.stl'}>{t('gen.downloadStl', { name: couponName ?? 'fit_coupon.stl' })}</a>
           ) : (
-            <button className="btn wide" onClick={requestCoupon} disabled={busy} title="small standalone calibration print: joint clearances, clip fits A–D, BaseLock segment — separate from the mold zip">
-              Build fit coupon (calibration print)
+            <button className="btn wide" onClick={requestCoupon} disabled={busy} title={t('gen.couponBtnTitle')}>
+              {t('gen.couponBtn')}
             </button>
           )}
           {couponNotes.length > 0 && (
-            <div className="hint dim">{couponNotes.join(' · ')}</div>
+            <div className="hint dim">{couponNotes.map((n) => te(lang, n)).join(' · ')}</div>
           )}
           <div className="hint dim">
-            Hardware: {result.fastening
-              ? `${result.fastening.clipCount} clamp stations · mode ${result.fastening.mode}${result.fastening.warning ? ` · ⚠ ${result.fastening.warning}` : ''}`
-              : '6–10 binder clips (25–32 mm) on the seam rail'}
-            . Package: STL set, project.json, assembly sheet.
+            {t('gen.hardware')}{' '}{result.fastening
+              ? t('gen.fastening', { n: result.fastening.clipCount, mode: result.fastening.mode }) + (result.fastening.warning ? t('gen.fastening.warn', { w: te(lang, result.fastening.warning) }) : '')
+              : t('gen.fastening.default')}
+            . {t('gen.package')}
           </div>
         </div>
       )}

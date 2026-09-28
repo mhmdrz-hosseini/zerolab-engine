@@ -62,10 +62,45 @@ export function buildPrintFiles(deps: {
       { name: 'jacket B', file: '02_jacket/jacket_B.stl', mesh: parts.jacketB, note: 'print rim-down; groove side is the mating face' },
     ];
   const partDefs = [
-    { name: 'master base', file: '01_master/master_base.stl', mesh: masterMesh, note: 'doll + fused base plate — print plate-down as one piece' },
+    { name: 'master base', file: '01_master/master_base.stl', mesh: masterMesh, note: '' },
     ...jacketDefs,
     { name: 'silicone skin preview', file: '03_preview/silicone_skin.stl', mesh: parts.siliconeSkin, note: 'NOT printed — this is the mold the silicone will become' },
   ];
+
+  // Slicer orientation guidance (reliability brief §8): the exported CAD is NOT
+  // rotated — instead the guidance derives from the mold's actual frame, so the
+  // instructions match the geometry the file actually contains. vert=Z prints
+  // as exported; a Y/X vertical needs a specific quarter-turn whose sign is
+  // resolved from where the base plane sits in the exported coordinates
+  // (plate spans [base−plateT, base] along vert — normally the low end).
+  const orientation = (what: 'plate' | 'rim'): string => {
+    const face = what === 'plate' ? 'base plate' : 'seating rim';
+    if (!info.frame) {
+      return what === 'plate'
+        ? 'print plate-down, as exported — never flip it'
+        : 'print rim-down, as exported — never seam-down';
+    }
+    const { vert, base, plateT } = info.frame;
+    if (vert === 'Z') return `print ${what}-down, as exported — never flip it`;
+    const vi = vert === 'X' ? 0 : 1;
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < masterMesh.vertProperties.length / 3; i++) {
+      const v = masterMesh.vertProperties[i * 3 + vi];
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+    const atMin = Math.abs((base - plateT) - lo) <= Math.abs(hi - (base - plateT));
+    const rot = (about: 'X' | 'Y', deg: string) =>
+      `rotate ${deg} about ${about} so the ${face} lies flat on the bed (mold vertical is ${vert} in the exported coordinates)`;
+    if (vert === 'Y') return atMin ? rot('X', '+90°') : rot('X', '−90°');
+    return atMin ? rot('Y', '−90°') : rot('Y', '+90°');
+  };
+  const plateOrient = orientation('plate');
+  const rimOrient = orientation('rim');
+  partDefs[0].note = `${plateOrient} — doll + fused base plate as one piece`;
+  for (const j of jacketDefs) {
+    j.note = `${rimOrient}; ${j.note.split('; ')[1] ?? 'mating face per assembly.md'}`;
+  }
 
   // export mesh gate (hard): clean every part, then require a watertight,
   // degenerate-free result before anything is written. "Watertight" tolerates
@@ -138,7 +173,7 @@ ${materialNote}
 - Per-part slicer settings ship in \`print_profile.json\` — the **master** wants quality (0.12–0.16 mm layers; the silicone reproduces its surface), the **jackets** want speed/structure (0.6 mm nozzle OK).
 
 ## Steps
-1. Print \`master_base\` (doll + fused base plate, plate-down), ${is3 ? '`jacket_A`, `jacket_B1` and `jacket_B2`' : '`jacket_A` and `jacket_B`'} (rim-down).
+1. Print \`master_base\` (doll + fused base plate — ${plateOrient}), ${is3 ? '`jacket_A`, `jacket_B1` and `jacket_B2`' : '`jacket_A` and `jacket_B`'} (${rimOrient}).
 2. ${is3
     ? 'Join **jacket B1** and **jacket B2** on the base plate — their sub-joint registers sideways; seat both rims.'
     : 'Bring **jacket B** in from its side; seat its rim on the base plate.'}
@@ -168,7 +203,7 @@ ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).
     },
     profiles: {
       master_base: {
-        orientation: 'plate-down, as exported — never flip it',
+        orientation: plateOrient,
         nozzle_mm: 0.4,
         layer_height_mm: [0.12, 0.16],
         perimeters: 3,
@@ -181,7 +216,7 @@ ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).
         post_process: 'sand/fill if a smooth cast surface is wanted → seal (e.g. Smooth-On print coating) → release agent → pour silicone',
       },
       jacket_A: {
-        orientation: 'rim-down, as exported — never seam-down',
+        orientation: rimOrient,
         nozzle_mm: 0.4,
         layer_height_mm: [0.2, 0.24],
         fast_alt: { nozzle_mm: 0.6, layer_height_mm: [0.28, 0.32] },
@@ -194,7 +229,7 @@ ${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).
         elephant_foot_compensation_mm: 0.2,
       },
       jacket_B: {
-        orientation: 'rim-down, as exported — never seam-down',
+        orientation: rimOrient,
         nozzle_mm: 0.4,
         layer_height_mm: [0.2, 0.24],
         fast_alt: { nozzle_mm: 0.6, layer_height_mm: [0.28, 0.32] },

@@ -6,7 +6,25 @@ import { ImportPanel } from './ui/ImportPanel';
 import { Viewer } from './ui/Viewer';
 import { useStore } from './state/store';
 import { applyDocumentLang, te, useT } from './i18n';
-import { AXES } from './engine/types';
+import { AXES, type MeshArrays } from './engine/types';
+
+/** bbox center of a mesh — used to center the display group on the mesh set
+ *  actually shown (a scaled result is NOT centered by the as-ingested bbox). */
+function bboxCenterOf(m: MeshArrays): [number, number, number] {
+  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < m.vertProperties.length / 3; i++) {
+    for (let k = 0; k < 3; k++) {
+      const x = m.vertProperties[i * 3 + k];
+      if (x < min[k]) min[k] = x;
+      if (x > max[k]) max[k] = x;
+    }
+  }
+  return [
+    (min[0] + max[0]) / 2,
+    (min[1] + max[1]) / 2,
+    (min[2] + max[2]) / 2,
+  ];
+}
 
 export default function App() {
   const lang = useStore((s) => s.lang);
@@ -53,19 +71,38 @@ export default function App() {
         report.bbox.min[2] + dim[2] / 2,
       ] as [number, number, number])
     : ([0, 0, 0] as [number, number, number]);
-  const frameDim = result?.outerDim ?? dim;
+  const busy = phase === 'busy';
+  // during a (re)generation the previous mold preview is stale — hide it so
+  // the old size/orientation is never mistaken for the new result
+  const showResult = !!result && !busy;
+  const frameDim = showResult ? result!.outerDim : dim;
   const radius = Math.max(...frameDim) * 1.2;
-  const gridY = -(dim[1] / 2) - 4;
+  // upright framing: grid sits at the plate bottom (base − plateT in vert
+  // coords; after the frame rotation that plane is world y = −plateT)
+  const gridY = showResult && result!.frame
+    ? -result!.frame.plateT - 0.5
+    : -(dim[1] / 2) - 4;
+  // display center: when a result is shown, center on the RESULT's own bbox
+  // (a scaled master is not centered by the as-ingested bbox — the viewport
+  // went empty after a 5 cm regen because every layer was offset by the
+  // 15 cm-scale center)
+  const displayCenter: [number, number, number] =
+    showResult && result?.parts.jacketOuter ? bboxCenterOf(result.parts.jacketOuter) : center;
 
   const layerDefs: LayerDef[] = [];
-  if (preview && layers.master) layerDefs.push({ id: 'master', mesh: preview, color: '#9fb6c6', opacity: failure ? 0.92 : 0.5, order: 2, trap: failure?.trapFlags });
-  if (result && layers.skin) layerDefs.push({ id: 'siliconeSkin', mesh: result.parts.siliconeSkin, color: '#5ec9a8', opacity: 0.45, order: 3 });
-  if (result && layers.jacketA) layerDefs.push({ id: 'jacketA', mesh: result.parts.jacketA, color: '#7fa8d6', opacity: 0.4, order: 4 });
-  if (result && layers.jacketB) layerDefs.push({ id: 'jacketB', mesh: result.parts.jacketB, color: '#d686a2', opacity: 0.4, order: 4 });
-  if (result && layers.jacketB1) layerDefs.push({ id: 'jacketB1', mesh: result.parts.jacketB1, color: '#7fcbb0', opacity: 0.4, order: 4 });
-  if (result && layers.jacketB2) layerDefs.push({ id: 'jacketB2', mesh: result.parts.jacketB2, color: '#d6b47f', opacity: 0.4, order: 4 });
-  if (result && layers.plate) layerDefs.push({ id: 'basePlate', mesh: result.parts.basePlate, color: '#c9b391', opacity: 0.9, order: 1 });
-  if (result && layers.outer && !realView) layerDefs.push({ id: 'jacketOuter', mesh: result.parts.jacketOuter, color: '#a9b6c4', opacity: 0.14, order: 0 });
+  // after a size regen the raw analysis preview is at the AS-INGESTED scale —
+  // show the result's scaled master instead, so the viewport never mixes a
+  // 15 cm preview with a 5 cm mold (failure overlay still needs the raw
+  // preview: trap flags are indexed on it)
+  const masterMesh = failure ? preview : (result?.parts.master ?? preview);
+  if (masterMesh && layers.master) layerDefs.push({ id: 'master', mesh: masterMesh, color: '#9fb6c6', opacity: failure ? 0.92 : 0.5, order: 2, trap: failure?.trapFlags });
+  if (showResult && layers.skin) layerDefs.push({ id: 'siliconeSkin', mesh: result!.parts.siliconeSkin, color: '#5ec9a8', opacity: 0.45, order: 3 });
+  if (showResult && layers.jacketA) layerDefs.push({ id: 'jacketA', mesh: result!.parts.jacketA, color: '#7fa8d6', opacity: 0.4, order: 4 });
+  if (showResult && layers.jacketB) layerDefs.push({ id: 'jacketB', mesh: result!.parts.jacketB, color: '#d686a2', opacity: 0.4, order: 4 });
+  if (showResult && layers.jacketB1) layerDefs.push({ id: 'jacketB1', mesh: result!.parts.jacketB1!, color: '#7fcbb0', opacity: 0.4, order: 4 });
+  if (showResult && layers.jacketB2) layerDefs.push({ id: 'jacketB2', mesh: result!.parts.jacketB2!, color: '#d6b47f', opacity: 0.4, order: 4 });
+  if (showResult && layers.plate) layerDefs.push({ id: 'basePlate', mesh: result!.parts.basePlate, color: '#c9b391', opacity: 0.9, order: 1 });
+  if (showResult && layers.outer && !realView) layerDefs.push({ id: 'jacketOuter', mesh: result!.parts.jacketOuter, color: '#a9b6c4', opacity: 0.14, order: 0 });
 
   return (
     <div className="app">
@@ -119,15 +156,16 @@ export default function App() {
           <>
             <Viewer
               layers={layerDefs}
-              center={center}
+              center={displayCenter}
               radius={radius}
               gridY={gridY}
               axis={result?.axis}
               explode={explode}
               explodeDist={result ? 0.45 * result.outerDim[AXES.indexOf(result.axis)] : 0}
               real={realView}
+              frame={result?.frame}
             />
-            {result && (
+            {showResult && (
               <div className="stage-bar" dir="ltr">
                 <label>{t('view.explode')}</label>
                 <input

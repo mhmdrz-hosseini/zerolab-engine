@@ -5,6 +5,7 @@
 import { zipSync, type Zippable } from 'fflate';
 import { writeStlBinary } from './stl';
 import { cleanExportMesh, type MeshAudit } from './clean';
+import type { ManifoldMod } from './manifoldLoader';
 import type { GenerateParams, MeshArrays } from './types';
 
 export interface PackageInfo {
@@ -38,6 +39,7 @@ export function buildPrintFiles(deps: {
   masterBase?: MeshArrays;  // doll + fused plate (V0.2)
   parts: Record<string, MeshArrays>;
   info: PackageInfo;
+  mod?: ManifoldMod;        // kernel — enables the topology rescue in the export cleanup
 }): PrintFiles {
   const { master, masterBase, parts, info } = deps;
   const masterMesh = masterBase ?? master;
@@ -65,17 +67,22 @@ export function buildPrintFiles(deps: {
   ];
 
   // export mesh gate (hard): clean every part, then require a watertight,
-  // degenerate-free result before anything is written
+  // degenerate-free result before anything is written. "Watertight" tolerates
+  // pinched edges (two closed sheets sharing one edge — a valid CSG pinch);
+  // they are reported in the project file instead.
   const meshAudit: Record<string, MeshAudit & { droppedTris: number; mergedVerts: number }> = {};
   const gateFailures: string[] = [];
   for (const p of partDefs) {
-    const cleaned = cleanExportMesh(p.mesh);
+    const cleaned = cleanExportMesh(p.mesh, deps.mod);
     p.mesh = cleaned.mesh;
     meshAudit[p.file] = { ...cleaned.audit, droppedTris: cleaned.stats.droppedTris, mergedVerts: cleaned.stats.mergedVerts };
     const a = cleaned.audit;
     if (!a.watertight) gateFailures.push(`${p.file}: not watertight (boundary ${a.boundaryEdges}, non-manifold ${a.nonManifoldEdges})`);
     if (a.degenerateTris > 0) gateFailures.push(`${p.file}: ${a.degenerateTris} degenerate face(s) survived cleanup`);
     if (a.zeroVolumeComponents > 0) gateFailures.push(`${p.file}: ${a.zeroVolumeComponents} zero-volume component(s) survived cleanup`);
+    if (a.pinchedEdges > 0) {
+      info.warnings = [...info.warnings, `${p.file}: ${a.pinchedEdges} pinched edge(s) (two closed surface sheets share an edge — valid geometry, noted for the slicer)`];
+    }
   }
   if (gateFailures.length > 0) {
     throw new Error(`Export mesh gate failed — package NOT written. ${gateFailures.join(' · ')}`);

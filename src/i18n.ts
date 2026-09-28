@@ -124,7 +124,7 @@ const en = {
   'view.explode': 'Exploded view',
   'view.schematic': 'Schematic',
   'view.real': 'Real',
-  'size.sliderLabel': 'Largest mold dimension',
+  'size.sliderLabel': 'Master size (largest side)',
   'size.cm': 'cm',
   'size.preset.cupcake': 'Cupcake',
   'size.preset.small': 'Small',
@@ -132,14 +132,14 @@ const en = {
   'size.preset.large': 'Large',
   'size.preset.max': 'Printer max',
   'size.silicone': 'Silicone pour',
-  'size.moldWeight': 'Printed mold',
-  'size.masterWeight': 'Casting resin (master copy)',
+  'size.moldWeight': 'Printed mold (PLA)',
+  'size.masterWeight': 'Printed master (PLA)',
   'size.dims': 'Mold outer: {d} mm',
   'size.estimateNote': 'estimates while dragging — regenerate for exact values',
   'size.smallHint':
-    'At this scale the {g} mm gap is large relative to the model — the “Small detail” preset (6 mm) wastes less silicone.',
-  'size.densityNote': 'mass ≈ volume × 1.2 g/cm³ (printed resin/PLA) · casting resin ≈ 1.13 g/cm³',
-  'size.range': '6.5–20 cm — cupcake floor (20 mm master minimum), 20 cm printer cap per dimension',
+    'Small master — gap and wall scale down with it (this preset pours a {g} mm silicone gap); FDM-safe minimums kept.',
+  'size.densityNote': 'mass ≈ volume × 1.24 g/cm³ (PLA — all printed parts)',
+  'size.range': '2–20 cm master — plate, gap and walls scale with the master; outer mold size shown below',
 };
 
 export type Key = keyof typeof en;
@@ -259,7 +259,7 @@ const fa: Record<Key, string> = {
   'view.explode': 'نمای بازشده',
   'view.schematic': 'شماتیک',
   'view.real': 'واقعی',
-  'size.sliderLabel': 'بزرگ‌ترین بعد قالب',
+  'size.sliderLabel': 'اندازهٔ مستر (بزرگ‌ترین ضلع)',
   'size.cm': 'سانتی‌متر',
   'size.preset.cupcake': 'کاپ‌کیک',
   'size.preset.small': 'کوچک',
@@ -267,14 +267,14 @@ const fa: Record<Key, string> = {
   'size.preset.large': 'بزرگ',
   'size.preset.max': 'حداکثر چاپ',
   'size.silicone': 'سیلیکون موردنیاز',
-  'size.moldWeight': 'قالب چاپی',
-  'size.masterWeight': 'رزین ریخته‌گری (کپی مستر)',
+  'size.moldWeight': 'قالب چاپی (PLA)',
+  'size.masterWeight': 'مستر چاپی (PLA)',
   'size.dims': 'ابعاد بیرونی قالب: {d} میلی‌متر',
   'size.estimateNote': 'مقادیر هنگام کشیدن، برآورد هستند — برای عدد دقیق بسازید',
   'size.smallHint':
-    'در این اندازه، گپ {g} میلی‌متری نسبت به مدل بزرگ است — پریست «جزئیات ریز» (6 میلی‌متر) سیلیکون کمتری هدر می‌دهد.',
-  'size.densityNote': 'جرم ≈ حجم × 1.2 گرم بر سانتی‌متر مکعب (رزین/PLA چاپی) · رزین ریخته‌گری ≈ 1.13',
-  'size.range': '۶٫۵ تا ۲۰ سانتی‌متر — کف کاپ‌کیک (کمینهٔ معتبر مستر 20 میلی‌متر)، سقف چاپ ۲۰ سانتی‌متر',
+    'مستر کوچک — گپ و جدار هم‌مقیاس با آن کوچک می‌شوند (این پریست گپ {g} میلی‌متری می‌ریزد)؛ حداقل‌های امن FDM حفظ می‌شود.',
+  'size.densityNote': 'جرم ≈ حجم × 1.24 گرم بر سانتی‌متر مکعب (PLA — همهٔ قطعات چاپی)',
+  'size.range': 'مستر ۲ تا ۲۰ سانتی‌متر — صفحه، گپ و جدارها هم‌مقیاس با مستر تغییر می‌کنند؛ ابعاد بیرونی قالب پایین نشان داده می‌شود',
 };
 
 function interpolate(s: string, vars?: Record<string, string | number>): string {

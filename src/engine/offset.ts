@@ -31,9 +31,17 @@ export interface OffsetOpts {
 }
 
 export async function buildSignedDistanceGrid(mesh: MeshArrays, opts: OffsetOpts): Promise<SdfGrid> {
-  const step = opts.step ?? 0.75;
+  const stepIn = opts.step ?? 0.75;
   const band = opts.gap + opts.wall + 2;
   const { min, dim } = computeBBox(mesh);
+  // grid-budget cap: the cell count grows with the cube of the master size —
+  // a 300 mm master at 0.75 mm would need ~82M cells (minutes of BVH queries
+  // and GBs of RAM). Raise the step isotropically when the raw budget exceeds
+  // ~24M cells; masters at the 150 mm reference scale keep their exact step.
+  const spans = [dim[0] + 2 * band, dim[1] + 2 * band, dim[2] + 2 * band];
+  const rawCells = (spans[0] / stepIn) * (spans[1] / stepIn) * (spans[2] / stepIn);
+  const MAX_CELLS = 24e6;
+  const step = rawCells > MAX_CELLS ? stepIn * Math.cbrt(rawCells / MAX_CELLS) : stepIn;
   const lo: [number, number, number] = [min[0] - band, min[1] - band, min[2] - band];
   const dims: [number, number, number] = [
     Math.ceil((dim[0] + 2 * band) / step) + 1,
@@ -134,13 +142,24 @@ export async function buildSignedDistanceGrid(mesh: MeshArrays, opts: OffsetOpts
       for (let k = 0; k < nz; k++) {
         const pz = lo[2] + (k + 0.5) * step;
         let inside = false;
+        let a = 0, b = col ? col.length : 0;
         if (col) {
-          let a = 0, b = col.length;
           while (a < b) { const mid = (a + b) >> 1; if (col[mid] <= pz) a = mid + 1; else b = mid; }
           inside = (col.length - a) % 2 === 1;
         }
         const idx = (i * dims[1] + j) * nz + k;
         if (!gated || !col || pz < gzmin - band || pz > gzmax + band) {
+          data[idx] = inside ? band : -band;
+          continue;
+        }
+        // Exact skip: the z-distance to the nearest surface crossing on this
+        // column lower-bounds the 3D distance. When it already reaches the
+        // band, the exact query would clamp to ±band anyway — skip it
+        // (measured: the dominant SDF cost on multi-hundred-thousand-tri
+        // masters; output is bit-identical).
+        const dzUp = a < col.length ? col[a] - pz : Infinity;
+        const dzDown = a > 0 ? pz - col[a - 1] : Infinity;
+        if (Math.min(dzUp, dzDown) >= band) {
           data[idx] = inside ? band : -band;
           continue;
         }

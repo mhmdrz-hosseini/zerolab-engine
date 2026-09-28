@@ -12,7 +12,7 @@ import { extractIso, instanceToMeshArrays } from '../engine/offset';
 import { buildSignedDistanceGrid } from '../engine/offset';
 import { analyzePieces } from '../engine/printability';
 import { parseObj } from '../engine/obj';
-import { generateMoldPackage, pickFrame, V02 } from '../engine/split';
+import { generateMoldPackage, pickFrame } from '../engine/split';
 import { parseStlBinary } from '../engine/stl';
 import { weldMesh } from '../engine/weld';
 import { AXES, type AnalysisReport, type GenerateParams, type GenerateResult, type MeshArrays, type WorkerRequest, WorkerResponse } from '../engine/types';
@@ -156,7 +156,9 @@ async function ingest(fileName: string, bytes: ArrayBuffer): Promise<void> {
 
 async function generate(params: GenerateParams): Promise<void> {
   if (!state) throw new Error('Import a master first');
-  const gap = Math.min(15, Math.max(4, params.gap));
+  // gap/wall arrive master-scale-aware from the size panel (small masters get
+  // proportionally smaller frames); hard clamps keep kernel validity only
+  const gap = Math.min(15, Math.max(2, params.gap));
   const wall = Math.min(8, Math.max(2, params.wall)); // 8: Heavy 6.5 preset must survive the clamp
   const m = await ensureMod();
   const t0 = Date.now();
@@ -214,17 +216,42 @@ async function generate(params: GenerateParams): Promise<void> {
   ];
 
   post({ type: 'progress', stage: 'Splitting jacket and simulating extraction', pct: 0.65 });
-  const pkg = await generateMoldPackage({
+  const buildParams = (g: number) => ({
+    gap: g, wall, clearance: params.clearance,
+    verticalAxis: params.verticalAxis, splitAxis: params.splitAxis,
+    gapWindow: params.gapWindow === undefined ? undefined : Math.min(params.gapWindow, g / 2),
+    ribs: params.ribs, material: params.material, panels: params.panels,
+  });
+  // Gap-retry ladder: a master-scaled gap can fall below what the shape's
+  // undercuts need for rigid extraction (undercut depth scales with FEATURES,
+  // not master size — a 5 cm spiderman traps exactly like the 15 cm one).
+  // Retry at ascending extraction-safe gaps; the grid stays valid (its band is
+  // informational for the gates, the envelope works off kernel slices).
+  let effGap = gap;
+  let pkg = await generateMoldPackage({
     mod: m, master, grid,
-    params: {
-      gap, wall, clearance: params.clearance,
-      verticalAxis: params.verticalAxis, splitAxis: params.splitAxis,
-      gapWindow: params.gapWindow, ribs: params.ribs, material: params.material, panels: params.panels,
-    },
+    params: buildParams(gap),
     rankedAxes,
     ports: false,
     onProgress: (stage, pct) => post({ type: 'progress', stage, pct: 0.65 + pct * 0.3 }),
   });
+  if (!pkg && gap < 8) {
+    for (const g of [4, 6, 8].filter((x) => x > gap + 0.01)) {
+      post({ type: 'progress', stage: `Scaled gap ${gap} mm could not extract — retrying at ${g} mm`, pct: 0.65 });
+      pkg = await generateMoldPackage({
+        mod: m, master, grid,
+        params: buildParams(g),
+        rankedAxes,
+        ports: false,
+        onProgress: (stage, pct) => post({ type: 'progress', stage, pct: 0.65 + pct * 0.3 }),
+      });
+      if (pkg) {
+        effGap = g;
+        pkg.warnings.push(`the master-scaled ${gap} mm silicone gap could not extract this shape (undercuts don't shrink with the master) — generated at a ${g} mm gap; the frame is proportionally deeper than the master`);
+        break;
+      }
+    }
+  }
 
   if (!pkg) {
     // all ranked axes failed — send trap-region data for the failure overlay (T003)
@@ -250,7 +277,7 @@ async function generate(params: GenerateParams): Promise<void> {
   post({ type: 'progress', stage: 'Running validation gates', pct: 0.96 });
   const is3 = !!pkg.pieces.jacketB1 && !!pkg.pieces.jacketB2;
   const gateReport = runGates({
-    grid, gap, wall, step: grid.step,
+    grid, gap: effGap, wall, step: grid.step,
     frame: pkg.frame,
     ports: pkg.ports,
     master,
@@ -287,7 +314,7 @@ async function generate(params: GenerateParams): Promise<void> {
       ...(is3 ? { jacketB1: pkg.pieces.jacketB1!, jacketB2: pkg.pieces.jacketB2! } : {}),
     },
     siliconeMl: pkg.siliconeMl, outerDim: pkg.jacketDim,
-    params: { gap, wall, clearance: params.clearance, gapWindow: params.gapWindow, ribs: params.ribs, material: params.material, panels: pkg.panels, masterScale: k },
+    params: { gap: effGap, wall, clearance: params.clearance, gapWindow: params.gapWindow, ribs: params.ribs, material: params.material, panels: pkg.panels, masterScale: k },
     axis: pkg.axis,
     elapsedMs: Date.now() - t0,
     extraction: {
@@ -307,8 +334,9 @@ async function generate(params: GenerateParams): Promise<void> {
         ? [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B1', mesh: pkg.pieces.jacketB1! }, { name: 'jacket_B2', mesh: pkg.pieces.jacketB2! }]
         : [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B', mesh: pkg.pieces.jacketB }],
       vert: pkg.frame.vert, base: pkg.frame.base, crown: pkg.frame.crown,
-      plateT: V02.plateT,
+      plateT: pkg.plateT,
     }),
+    frame: { vert: pkg.frame.vert, base: pkg.frame.base, plateT: pkg.plateT },
   };
   // SIZE FEATURE: per-part volume of everything the user actually prints (mass
   // estimates in the size panel); preview-only parts excluded
@@ -328,6 +356,7 @@ async function exportPackage(): Promise<void> {
   if (!state || !state.lastResult) throw new Error('Generate a mold first');
   const r = state.lastResult;
   if (!r.gatesPass) throw new Error('Validation gates failed — fix the failed checks before exporting');
+  const m = await ensureMod();
 
   const bb = (m: MeshArrays) => {
     const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
@@ -340,6 +369,7 @@ async function exportPackage(): Promise<void> {
     return [max[0] - min[0], max[1] - min[1], max[2] - min[2]] as number[];
   };
   const { zip, fileName } = buildPrintFiles({
+    mod: m,
     masterBase: r.parts.masterBase,
     parts: r.parts,
     info: {

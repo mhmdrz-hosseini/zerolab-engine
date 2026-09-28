@@ -92,14 +92,21 @@ function LayerMesh({ def, real }: { def: LayerDef; real: boolean }) {
   );
 }
 
-function Rig({ radius }: { radius: number }) {
+function Rig({ radius, upright }: { radius: number; upright: boolean }) {
   const camera = useThree((s) => s.camera);
   const controls = useThree((s) => s.controls) as { target: THREE.Vector3; update: () => void } | null;
   useEffect(() => {
-    camera.position.set(radius * 1.1, radius * 0.75, radius * 1.5);
-    controls?.target.set(0, 0, 0);
+    // upright framing: the assembly stands on its base plate (world +Y after
+    // the frame rotation), so look at it slightly from above the rim
+    if (upright) {
+      camera.position.set(radius * 0.55, radius * 0.5, radius * 1.6);
+      controls?.target.set(0, radius * 0.22, 0);
+    } else {
+      camera.position.set(radius * 1.1, radius * 0.75, radius * 1.5);
+      controls?.target.set(0, 0, 0);
+    }
     controls?.update();
-  }, [radius, camera, controls]);
+  }, [radius, camera, controls, upright]);
   return null;
 }
 
@@ -112,6 +119,7 @@ export function Viewer({
   explode = 0,
   explodeDist = 0,
   real = false,
+  frame,
 }: {
   layers: LayerDef[];
   center: [number, number, number];
@@ -121,7 +129,24 @@ export function Viewer({
   explode?: number;
   explodeDist?: number;
   real?: boolean;
+  /** mold orientation — rotate the assembly so the base plate faces down and
+   *  its top plane sits at y = 0 (the viewer's "rational" upright view) */
+  frame?: { vert: Axis; base: number; plateT: number };
 }) {
+  const upright = !!frame;
+  const { quat, lift } = (() => {
+    if (!frame) return { quat: null as THREE.Quaternion | null, lift: 0 };
+    const vertIdx = AXIS_INDEX[frame.vert];
+    const v = new THREE.Vector3(
+      vertIdx === 0 ? 1 : 0,
+      vertIdx === 1 ? 1 : 0,
+      vertIdx === 2 ? 1 : 0,
+    );
+    const q = new THREE.Quaternion().setFromUnitVectors(v, new THREE.Vector3(0, 1, 0));
+    // a point on the base plane (vert-coord = base) must land at world y = 0:
+    // rotated y of (p − center) = p_vert − center_vert, so lift = center_vert − base
+    return { quat: q, lift: center[vertIdx] - frame.base };
+  })();
   return (
     <Canvas camera={{ fov: 45, near: 1, far: 8000, position: [200, 140, 260] }} dpr={[1, 2]}>
       <color attach="background" args={['#e9edf4']} />
@@ -136,21 +161,23 @@ export function Viewer({
         </Environment>
       )}
       <gridHelper args={[600, 60, '#ccd4e0', '#dde3ec']} position={[0, gridY, 0]} />
-      <group position={[-center[0], -center[1], -center[2]]}>
-        {layers
-          .slice()
-          .sort((a, b) => a.order - b.order)
-          .map((def, i) => {
-            const off = explodeOffset(def.id, axis ?? 'Y', explodeDist, explode);
-            const moved = off[0] !== 0 || off[1] !== 0 || off[2] !== 0;
-            return (
-              <group key={`${def.order}-${i}`} position={moved ? off : undefined}>
-                <LayerMesh def={def} real={real} />
-              </group>
-            );
-          })}
+      <group quaternion={quat ?? undefined} position={[0, lift, 0]}>
+        <group position={[-center[0], -center[1], -center[2]]}>
+          {layers
+            .slice()
+            .sort((a, b) => a.order - b.order)
+            .map((def, i) => {
+              const off = explodeOffset(def.id, axis ?? 'Y', explodeDist, explode);
+              const moved = off[0] !== 0 || off[1] !== 0 || off[2] !== 0;
+              return (
+                <group key={`${def.order}-${i}`} position={moved ? off : undefined}>
+                  <LayerMesh def={def} real={real} />
+                </group>
+              );
+            })}
+        </group>
       </group>
-      <Rig radius={radius} />
+      <Rig radius={radius} upright={upright} />
       <OrbitControls makeDefault enableDamping dampingFactor={0.08} />
     </Canvas>
   );

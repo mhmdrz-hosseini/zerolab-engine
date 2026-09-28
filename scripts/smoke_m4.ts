@@ -62,8 +62,18 @@ async function runModel(mod: Awaited<ReturnType<typeof loadManifold>>, file: str
   check(`${file}: hard validation gates pass`, gates.pass, gates.checks.filter((c) => c.hard).map((c) => `${c.name}:${c.pass ? '✓' : '✗'}`).join(' '));
   if (!gates.pass) for (const c of gates.checks) console.log(`    · ${c.pass ? '✓' : '✗'} ${c.name}: ${c.detail}`);
 
+  // worker parity: master_base = full-res master ∪ plate (the V0.2 architecture
+  // never exports the bare master — the kernel fusion normalizes its topology)
+  const mm = new mod.Manifold(new mod.Mesh({ numProp: 3, vertProperties: parsed.vertProperties, triVerts: parsed.triVerts }));
+  const pm = new mod.Manifold(new mod.Mesh({ numProp: 3, vertProperties: pkg.pieces.basePlate.vertProperties, triVerts: pkg.pieces.basePlate.triVerts }));
+  const fused = mm.add(pm);
+  const masterBase = {
+    vertProperties: Float32Array.from(fused.getMesh().vertProperties),
+    triVerts: (() => { const g = fused.getMesh(); return Uint32Array.from(g.triVerts.subarray(0, g.numTri * 3)); })(),
+  };
   const { zip, fileName, files } = buildPrintFiles({
-    master: parsed.vertProperties ? { vertProperties: parsed.vertProperties, triVerts: parsed.triVerts } : analysis,
+    mod,
+    masterBase,
     parts: {
       jacketA: pkg.pieces.jacketA, jacketB: pkg.pieces.jacketB, basePlate: pkg.pieces.basePlate,
       siliconeSkin: pkg.pieces.skin,

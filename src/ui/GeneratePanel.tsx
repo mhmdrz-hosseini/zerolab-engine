@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import type { GenerateParams } from '../engine/types';
+import { useState } from 'react';
+import type { GenerateParams, GenerateResult } from '../engine/types';
+import { frameConstants } from '../engine/split';
 import { useStore } from '../state/store';
 import { te, useT } from '../i18n';
 import { EngineText } from './AnalysisPanel';
@@ -39,21 +40,41 @@ const WALLS = [
 type WallId = (typeof WALLS)[number]['id'];
 type EnvelopeId = (typeof ENVELOPES)[number]['id'];
 
-// mold size presets (largest dimension of the whole printed mold, cm):
-// cupcake minimum → printer bed cap
-// smallest achievable mold: 20 mm master floor + ~45 mm frame constants ≈ 6.5 cm
-const SIZE_MIN_CM = 6.5;
+// mold size semantics (cm): the MASTER's largest dimension — "5 cm means the
+// model master is 5 cm each side at most". The mold frame (plate, gap, wall,
+// freeboard) scales around it; the outer mold size is a consequence, shown in
+// the dims hint.
+// smallest achievable master: 20 mm intake floor; cap: 280 mm SDF budget / 20 cm printer bed
+const SIZE_MIN_CM = 2;
+const SIZE_MAX_CM = 20;
 const SIZE_PRESETS = [
-  { id: 'cupcake', cm: 6.5, labelKey: 'size.preset.cupcake' },
-  { id: 'small', cm: 8, labelKey: 'size.preset.small' },
-  { id: 'medium', cm: 12, labelKey: 'size.preset.medium' },
-  { id: 'large', cm: 16, labelKey: 'size.preset.large' },
-  { id: 'max', cm: 20, labelKey: 'size.preset.max' },
+  { id: 'cupcake', cm: 3, labelKey: 'size.preset.cupcake' },
+  { id: 'small', cm: 5, labelKey: 'size.preset.small' },
+  { id: 'medium', cm: 8, labelKey: 'size.preset.medium' },
+  { id: 'large', cm: 12, labelKey: 'size.preset.large' },
+  { id: 'max', cm: 16, labelKey: 'size.preset.max' },
 ] as const;
 
-const PRINT_DENSITY = 1.2; // g/cm³ — SLA resin / PLA
-const CAST_DENSITY = 1.13; // g/cm³ — epoxy casting resin
-const FRAME_CONST = 30;    // coarse pre-generate outer-dim constant (plate margin + freeboard)
+// printed parts are PLA (g/cm³); the master is printed in PLA too
+const PRINT_DENSITY = 1.24;
+// gap/wall scale with the master relative to the 150 mm reference, floored at
+// kernel/printer minimums — a 5 cm master must not carry a full-size 8 mm gap
+const REF_MASTER_MM = 150;
+const scaleFor = (masterMm: number): number => Math.max(0.15, Math.min(1, masterMm / REF_MASTER_MM));
+const halfMm = (x: number): number => Math.round(x * 2) / 2;
+
+// predicted mold outer dims (mm) for the dims hint: exact above the frame
+// floors by linear scaling of the last generation; a coarse frame estimate
+// before the first generation
+const predictOuter = (
+  result: GenerateResult | null, masterDim: [number, number, number],
+  k: number, k0: number, plateMargin: number, plateT: number, freeboard: number, wall: number,
+): [number, number, number] => {
+  const frameEst = 2 * plateMargin + 2 * wall * 1.45 + plateT + freeboard;
+  return result
+    ? result.outerDim.map((o, i) => Math.max(1, masterDim[i] * k + (o - masterDim[i] * k0) * (k / Math.max(k0, 1e-9)))) as [number, number, number]
+    : masterDim.map((d) => d * k + frameEst) as [number, number, number];
+};
 
 export function GeneratePanel() {
   const report = useStore((s) => s.report);
@@ -74,84 +95,58 @@ export function GeneratePanel() {
   const [ribs, setRibs] = useState(false);
   const [material, setMaterial] = useState<'silicone' | 'hotWax'>('silicone');
   const [targetCm, setTargetCm] = useState<number | null>(null); // null = track actual
-  const targetRef = useRef<number | null>(null);
-  targetRef.current = targetCm;
-  // one corrective regeneration per committed target: the quiet-line seam
-  // picker can switch split/pour axis between scales, which shifts the frame
-  // constants and lands the first pass up to ~10% off the target size
-  const autoFixedFor = useRef<number | null>(null);
-
-  // corrective pass (hooks run before the !report early-return below)
-  useEffect(() => {
-    if (phase === 'busy') return;
-    const tgt = targetRef.current;
-    const res = useStore.getState().result;
-    const rep = useStore.getState().report;
-    if (!tgt || !res || !rep) return;
-    if (autoFixedFor.current === tgt) return;
-    const want = tgt * 10;
-    const actual = Math.max(...res.outerDim);
-    autoFixedFor.current = tgt;
-    if (Math.abs(actual - want) <= want * 0.02) return;
-    const bind = res.outerDim.indexOf(actual);
-    const d = rep.bbox.dim[bind];
-    if (d <= 0.001) return;
-    const maxMaster = Math.max(...rep.bbox.dim);
-    let k2 = (res.params.masterScale ?? 1) + (want - actual) / d;
-    k2 = Math.min(k2, 280 / maxMaster);
-    k2 = Math.max(k2, 15 / maxMaster, 0.05);
-    useStore.getState().generate({ ...res.params, masterScale: k2, splitAxis: res.axis });
-  }, [phase, result]);
 
   if (!report) return null;
   const p = PRESETS.find((x) => x.id === preset)!;
   const f = FITS.find((x) => x.id === fit)!;
   const w = WALLS.find((x) => x.id === wall)!;
-  const params: GenerateParams = {
-    gap: p.gap,
-    wall: f.id === 'resin' ? 2 : w.wall,
-    clearance: f.clearance,
-    gapWindow: envelope === 'tight' ? Math.max(1.5, p.gap / 2) : undefined,
-    ribs,
-    material,
-  };
-  const busy = phase === 'busy';
 
-  // ---- size solving ----
-  // masterDim = as-ingested bbox (scale 1); k0/outer0 = the last generation.
-  // outer_i(k) = outer0_i + (k − k0)·masterDim_i is exact: master-derived
-  // geometry is linear in k, plate/frame constants (V02) are absolute.
+  // ---- size solving (master semantics) ----
+  // target cm = the master's largest dimension; k maps as-ingested → target.
   const masterDim = report.bbox.dim;
   const maxMasterDim = Math.max(...masterDim);
   const k0 = result?.params.masterScale ?? 1;
-  const outer0 = result?.outerDim ?? null;
-  const actualCm = outer0 ? Math.max(...outer0) / 10 : (maxMasterDim + FRAME_CONST) / 10;
+  const actualCm = (maxMasterDim * k0) / 10;
   const cm = targetCm ?? Math.round(actualCm * 10) / 10;
-
   const solveK = (targetMm: number): number => {
-    let kk = Infinity;
-    for (let i = 0; i < 3; i++) {
-      const d = masterDim[i];
-      if (d <= 0.001) continue;
-      const o = outer0 ? outer0[i] : masterDim[i] + FRAME_CONST;
-      kk = Math.min(kk, k0 + (targetMm - o) / d);
-    }
-    if (!Number.isFinite(kk)) kk = 1;
     // keep the scaled master inside the pipeline's validated ingest window
     // (20–280 mm — same bounds the intake normalization enforces)
-    kk = Math.min(kk, 280 / maxMasterDim);
-    kk = Math.max(kk, 20 / maxMasterDim, 0.05);
-    return kk;
+    return Math.min(280 / maxMasterDim, Math.max(20 / maxMasterDim, targetMm / maxMasterDim));
   };
   const k = solveK(cm * 10);
+  // scale-aware frame params for a given solved scale — computed per call so a
+  // size commit never mixes the new masterScale with the old render's gap/wall
+  // (stale closure sent gap 8 at a 5 cm master; the clearance gate rightly
+  // blocked the export)
+  const paramsFor = (kk: number): GenerateParams => {
+    const sK = scaleFor(maxMasterDim * kk);
+    const gapK = halfMm(Math.max(2, p.gap * sK));
+    const wallK = Math.max(2, halfMm((f.id === 'resin' ? 2 : w.wall) * sK));
+    return {
+      gap: gapK,
+      wall: wallK,
+      clearance: f.clearance,
+      gapWindow: envelope === 'tight' ? Math.max(1.5, gapK / 2) : undefined,
+      ribs,
+      material,
+    };
+  };
+  const effMasterMm = maxMasterDim * k;
+  const s = scaleFor(effMasterMm);
+  const effGap = halfMm(Math.max(2, p.gap * s));
+  const effWall = Math.max(2, halfMm((f.id === 'resin' ? 2 : w.wall) * s));
+  const K = frameConstants(effMasterMm);
+
+  const params: GenerateParams = paramsFor(k);
+  const busy = phase === 'busy';
 
   const commitSize = (cmValue: number) => {
     if (busy) return;
-    // pin the current split axis: resizing must not rotate the mold, and the
-    // affine outer-dim solve is only exact within one axis configuration
+    // pin the current split axis: resizing must not rotate the mold
+    const kk = solveK(cmValue * 10);
     generate({
-      ...params,
-      masterScale: solveK(cmValue * 10),
+      ...paramsFor(kk),
+      masterScale: kk,
       ...(result ? { splitAxis: result.axis } : {}),
     });
   };
@@ -162,11 +157,9 @@ export function GeneratePanel() {
   const moldG = result?.partVolumesCm3
     ? Object.values(result.partVolumesCm3).reduce((a, b) => a + b, 0) * ratio ** 3 * PRINT_DENSITY
     : null;
-  const masterG = report.volumeMl * k ** 3 * CAST_DENSITY;
-  const predOuter = outer0
-    ? outer0.map((o, i) => Math.max(1, o + (k - k0) * masterDim[i]))
-    : masterDim.map((d) => d * k + FRAME_CONST);
-  const smallHint = maxMasterDim * k < 60 && p.gap >= 6;
+  const masterG = report.volumeMl * k ** 3 * PRINT_DENSITY;
+  const predOuter = predictOuter(result, masterDim, k, k0, K.plateMargin, K.plateT, K.freeboard, effWall);
+  const smallHint = effMasterMm < 60;
   const pending = targetCm !== null && (busy || Math.abs(k - k0) > 1e-4);
 
   return (
@@ -177,7 +170,7 @@ export function GeneratePanel() {
         <span className="size-label">{t('size.sliderLabel')}</span>
         <input
           className="size-num"
-          type="number" dir="ltr" min={SIZE_MIN_CM} max={20} step={0.5}
+          type="number" dir="ltr" min={SIZE_MIN_CM} max={SIZE_MAX_CM} step={0.5}
           value={cm}
           disabled={busy}
           onChange={(e) => {
@@ -192,7 +185,7 @@ export function GeneratePanel() {
         <span className="size-unit">{t('size.cm')}</span>
       </div>
       <input
-        type="range" min={SIZE_MIN_CM} max={20} step={0.5}
+        type="range" min={SIZE_MIN_CM} max={SIZE_MAX_CM} step={0.5}
         value={cm}
         disabled={busy}
         style={{ ['--slider-fill' as never]: `${((cm - SIZE_MIN_CM) / (20 - SIZE_MIN_CM)) * 100}%` }}
@@ -231,7 +224,7 @@ export function GeneratePanel() {
         {t('size.dims', { d: predOuter.map((x) => x.toFixed(0)).join(' × ') })}
         {pending ? ` · ${t('size.estimateNote')}` : ''}
       </div>
-      {smallHint && <div className="hint dim" style={{ color: 'var(--warn)', margin: '4px 0 0' }}>{t('size.smallHint', { g: p.gap })}</div>}
+      {smallHint && <div className="hint dim" style={{ color: 'var(--warn)', margin: '4px 0 0' }}>{t('size.smallHint', { g: effGap })}</div>}
       <div className="hint dim" style={{ margin: '2px 0 0', fontSize: 10.5 }}>{t('size.range')}</div>
 
       <div className="chips">

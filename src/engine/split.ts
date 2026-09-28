@@ -22,7 +22,10 @@ import type { Axis, GenerateParams, MeshArrays } from './types';
 const UNIT: Record<Axis, [number, number, number]> = { X: [1, 0, 0], Y: [0, 1, 0], Z: [0, 0, 1] };
 const AXES: Axis[] = ['X', 'Y', 'Z'];
 
-// reference-derived constants (Cute Sheep measurements, docs §1/§4)
+// reference-derived constants (Cute Sheep measurements, docs §1/§4), sized for
+// the 150 mm reference master. For other master sizes buildMoldForAxis derives
+// scaled constants from frameConstants() — these stay as the s=1 reference and
+// the printer-physics floors (foot relief), which are absolute.
 export const V02 = {
   plateMargin: 18,   // plate outline = shadow ⊕ 18 mm (ref ≈ 18.5)
   plateT: 4,         // plate thickness (ref 2.9)
@@ -38,6 +41,51 @@ export const V02 = {
   footReliefH: 0.5,  // elephant-foot relief band on bed-contact faces
   footReliefC: 0.2,  // …and its depth (Prusa-style 0.2 mm compensation, in geometry)
 };
+
+/**
+ * Frame constants scaled to the master's largest dimension. Every
+ * master-proportional constant (plate margin, plate thickness, rim, freeboard,
+ * joint tongue, rails, ribs) shrinks with small masters — a 5 cm master must
+ * not carry a full-size plate and gap — floored at FDM-printable minimums.
+ * Printer-physics constants (elephant-foot relief) stay absolute.
+ */
+export interface FrameConstants {
+  plateMargin: number;
+  plateT: number;
+  rimH: number;
+  freeboard: number;
+  tongue: number;
+  leadFlare: number;
+  leadDepth: number;
+  tipTaper: number;
+  railOffset: number;
+  railHalfW: number;
+  ribDepth: number;
+  ribW: number;
+  footReliefH: number;
+  footReliefC: number;
+}
+
+export function frameConstants(maxMasterDim: number): FrameConstants {
+  const s = Math.max(0.2, Math.min(1, maxMasterDim / 150));
+  const mm = (ref: number, floor: number) => Math.max(floor, ref * s);
+  return {
+    plateMargin: mm(V02.plateMargin, 6),
+    plateT: mm(V02.plateT, 2),
+    rimH: mm(V02.rimH, 1.5),
+    freeboard: mm(V02.freeboard, 4),
+    tongue: mm(V02.tongue, 1),
+    leadFlare: mm(V02.leadFlare, 0.3),
+    leadDepth: mm(V02.leadDepth, 0.5),
+    tipTaper: mm(V02.tipTaper, 0.4),
+    railOffset: mm(7, 3),
+    railHalfW: 2.5,          // seam-rail span sized for binder clips — absolute
+    ribDepth: mm(8, 4),
+    ribW: mm(2, 1.2),
+    footReliefH: V02.footReliefH,
+    footReliefC: V02.footReliefC,
+  };
+}
 
 export interface CS {
   offset(delta: number, joinType?: string, miterLimit?: number, circularSegments?: number): CS;
@@ -72,6 +120,7 @@ export function pickFrame(pull: Axis, master: MeshArrays, vertical?: Axis): Mold
   const bb = bboxOfArrays(master);
   const p = AXES.indexOf(pull);
   const rest = [0, 1, 2].filter((a) => a !== p);
+  const K = frameConstants(Math.max(...bb.dim));
   if (vertical !== undefined) {
     const vi = AXES.indexOf(vertical);
     if (vi === p) throw new Error('The vertical (pour) axis must differ from the split (pull) axis');
@@ -82,30 +131,59 @@ export function pickFrame(pull: Axis, master: MeshArrays, vertical?: Axis): Mold
       depth: AXES[d],
       base: bb.min[vi],
       mid: bb.min[p] + bb.dim[p] / 2,
-      crown: bb.min[vi] + bb.dim[vi] + V02.freeboard,
+      crown: bb.min[vi] + bb.dim[vi] + K.freeboard,
     };
   }
-  // stable-base rule: the mold stands on the rest axis whose extreme slice
-  // carries the most resting surface, like the commercial systems standing
-  // figures on their feet. Triangle-AREA weighted: vertex counting flips when
-  // tessellation density differs between faces (a subdivided base wins on
-  // vertex count while a flat coarse face holds the real footprint).
+  // stable-base rule v2 — scale-invariant, flatness-first. The mold stands on
+  // the rest axis whose minimum side makes the best BED: commercial systems
+  // stand figures on their feet and flat signs on their flat back. Three
+  // fixes over the original rule:
+  //   • the near-extreme band is purely relative (2% of the axis dim) — the
+  //     old 2 mm absolute floor ate proportionally deeper into small masters
+  //     and flipped the pick (measured: a 5 cm figure stood on its side);
+  //   • triangle-AREA weighting counts only faces whose normal is parallel to
+  //     the axis (±6°) as flat bed area — vertex counting flipped on
+  //     tessellation density;
+  //   • the score multiplies flatness by the patch's stability: a thin flat
+  //     WALL parallel to the extreme plane (the left edge of an "E") has large
+  //     flat area but is a mast, not a bed — its cross-extent is tiny next to
+  //     the height above it, so it loses to the real sole/back face.
   const vp = master.vertProperties, tv = master.triVerts;
-  const contact = (a: number): number => {
-    const thr = bb.min[a] + Math.max(2, bb.dim[a] * 0.02);
-    let area = 0;
+  const BED_BAND = 0.02;   // 2% of the axis dim
+  const COS_FLAT = 0.9945; // |n·axis| / |n| ≥ cos(6°)
+  const score = (a: number): number => {
+    const thr = bb.min[a] + bb.dim[a] * BED_BAND;
+    const cross = Math.max(1e-9, bb.dim[(a + 1) % 3] * bb.dim[(a + 2) % 3]);
+    const u = (a + 1) % 3, w = (a + 2) % 3;
+    let flat = 0;
+    const lo = [Infinity, Infinity], hi = [-Infinity, -Infinity];
     for (let t = 0; t < tv.length; t += 3) {
       const i0 = tv[t] * 3, i1 = tv[t + 1] * 3, i2 = tv[t + 2] * 3;
       const ca = (vp[i0 + a] + vp[i1 + a] + vp[i2 + a]) / 3;
       if (ca > thr) continue;
       const ux = vp[i1] - vp[i0], uy = vp[i1 + 1] - vp[i0 + 1], uz = vp[i1 + 2] - vp[i0 + 2];
       const wx = vp[i2] - vp[i0], wy = vp[i2 + 1] - vp[i0 + 1], wz = vp[i2 + 2] - vp[i0 + 2];
-      area += 0.5 * Math.hypot(uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx);
+      const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+      const na = a === 0 ? nx : a === 1 ? ny : nz;
+      const norm = Math.hypot(nx, ny, nz);
+      const A = norm / 2;
+      if (Math.abs(na) < COS_FLAT * norm) continue;
+      flat += A;
+      for (const i of [i0, i1, i2]) {
+        const cu = vp[i + u], cw = vp[i + w];
+        if (cu < lo[0]) lo[0] = cu; if (cu > hi[0]) hi[0] = cu;
+        if (cw < lo[1]) lo[1] = cw; if (cw > hi[1]) hi[1] = cw;
+      }
     }
-    return area;
+    const flatRatio = flat / cross;
+    if (flatRatio < 1e-6) return 0;
+    const extU = hi[0] > lo[0] ? hi[0] - lo[0] : 0;
+    const extW = hi[1] > lo[1] ? hi[1] - lo[1] : 0;
+    const stability = Math.min(extU, extW) / Math.max(bb.dim[a], 1e-9);
+    return flatRatio * stability;
   };
-  const a0 = contact(rest[0]), a1 = contact(rest[1]);
-  const v = a0 >= a1 ? rest[0] : rest[1];
+  const s0 = score(rest[0]), s1 = score(rest[1]);
+  const v = s0 >= s1 ? rest[0] : rest[1];
   const d = rest.find((a) => a !== v)!;
   return {
     pull,
@@ -113,7 +191,7 @@ export function pickFrame(pull: Axis, master: MeshArrays, vertical?: Axis): Mold
     depth: AXES[d],
     base: bb.min[v],
     mid: bb.min[p] + bb.dim[p] / 2,
-    crown: bb.min[v] + bb.dim[v] + V02.freeboard,
+    crown: bb.min[v] + bb.dim[v] + K.freeboard,
   };
 }
 
@@ -168,8 +246,9 @@ function machineJoint(deps: {
   clearance: number;
   label: string;
   flip?: boolean;              // pos role sits on the axis-NEGATIVE side
+  K: FrameConstants;           // scale-aware joint constants
 }, posHalf: ManifoldInstance, negHalf: ManifoldInstance): { pos: ManifoldInstance; neg: ManifoldInstance } {
-  const { track, ref, axis, mid, wall, clearance } = deps;
+  const { track, ref, axis, mid, wall, clearance, K } = deps;
   const s = deps.flip ? -1 : 1; // direction from the face into the neg role, in axis coords
   const span = (a: number, b: number): [number, number] => a <= b ? [a, b] : [b, a];
   const p = AXES.indexOf(axis);
@@ -178,12 +257,12 @@ function machineJoint(deps: {
   if (p === 1) localRef = track(track(ref.rotate(90, 0, 0)).rotate(0, 0, 90));
   const seam = track(localRef.slice(mid));
   const inset = Math.max(0.65, wall * 0.28);
-  const depth = Math.min(V02.tongue, wall * 0.65);
+  const depth = Math.min(K.tongue, wall * 0.65);
   const tongueCS = track(seam.offset(-inset, 'Round', 2, 32).simplify(1e-4));
   // Stepped tip taper (audit §12): the last `tipTaper` mm of the lip shrink
   // in two 0.08 mm steps so the tongue finds the flared groove mouth instead
   // of butting against it. Rings that pinch empty on thin walls are skipped.
-  const tipH = Math.min(V02.tipTaper, depth * 0.45);
+  const tipH = Math.min(K.tipTaper, depth * 0.45);
   const tipHighCS = track(tongueCS.offset(-0.08, 'Round', 2, 32).simplify(1e-4));
   const tipLowCS = track(tongueCS.offset(-0.16, 'Round', 2, 32).simplify(1e-4));
   const mainTongue = track(prismOnPull(tongueCS, p, ...span(mid - s * (depth - tipH), mid + s * 0.2)));
@@ -199,9 +278,9 @@ function machineJoint(deps: {
   // Lead-in flare (audit §12): the groove mouth widens for the first
   // `leadDepth` mm. Kept strictly inside the wall section (never re-cutting
   // the cavity face): flare ≤ inset − clearance − 0.1.
-  const flare = Math.min(V02.leadFlare, Math.max(0, inset - clearance - 0.1));
+  const flare = Math.min(K.leadFlare, Math.max(0, inset - clearance - 0.1));
   const flareCS = track(tongueCS.offset(clearance + flare, 'Round', 2, 32).simplify(1e-4));
-  const flarePrism = track(prismOnPull(flareCS, p, ...span(mid - s * Math.min(V02.leadDepth, depth * 0.6), mid + s * 0.01)));
+  const flarePrism = track(prismOnPull(flareCS, p, ...span(mid - s * Math.min(K.leadDepth, depth * 0.6), mid + s * 0.01)));
   if (tongue.volume() < 0.1) throw new Error(`${deps.label}: joint is empty — increase the wall thickness`);
   let pos = track(posHalf.add(tongue));
   let neg = track(negHalf.subtract(groove));
@@ -237,6 +316,7 @@ export interface AxisAttempt {
   panels: 2 | 3;
   jacketDim: [number, number, number];
   plateDim: [number, number, number];
+  plateT: number;               // scaled plate thickness (frameConstants)
   ports: PortsPlan;
   siliconeMl: number;
   cavityLoops: Loops;    // cavity prism outline, vert-frame (u3, v3) coords — fill-gate seed region
@@ -260,6 +340,8 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
   const progress = deps.onProgress ?? (() => {});
   const csCtor = mod.CrossSection as unknown as CSCtor;
   const frame = pickFrame(axis, master, params.verticalAxis);
+  const mbb = bboxOfArrays(master);
+  const K = frameConstants(Math.max(...mbb.dim));
   const warnings: string[] = [];
   const junk: { delete(): void }[] = [];
   const track = <T extends { delete(): void }>(x: T): T => { junk.push(x); return x; };
@@ -304,25 +386,29 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
     if (!isOk(cavitySolid) || !isOk(outerSolid)) throw new Error('Kernel rejected the envelope loft');
     const footprintCS = track(csCtor.ofPolygons(envelope.footprint as number[][][], 'EvenOdd'));
     const widestCS = track(csCtor.ofPolygons(envelope.widest as number[][][], 'EvenOdd'));
-    let plateOutlineCS = track(track(footprintCS.offset(V02.plateMargin, 'Round', 2, 48))
-      .add(track(widestCS.offset(wall * 1.2 + 2, 'Round', 2, 48))));
+    let plateOutlineCS = track(track(footprintCS.offset(K.plateMargin, 'Round', 2, 48))
+      .add(track(widestCS.offset(Math.max(3, wall * 1.2 + 2), 'Round', 2, 48))));
     const cavityLoops = envelope.widest;
     // Shell first: the cavity lies strictly inside the outer loft, so this cut
     // has no coincident faces. The old (outer+rimSlab)−cavity order re-cut
     // faces that already coincide and imprinted them as inverted slivers.
     let jacket = track(outerSolid.subtract(cavitySolid));
-    // Seating rim, built as a 2D ring: plate outline minus the widest cavity
-    // profile within the rim band (⊕0.05 keeps every face strictly inside the
-    // wall). Same geometry as the old slab-minus-cavity, without the re-cut.
-    const bandCS = track(csCtor.ofPolygons(envelope.sections[0].loops as number[][][], 'EvenOdd')) as CS;
-    let band = bandCS;
-    for (let k = 1; k < envelope.sections.length; k++) {
-      if (envelope.sections[k].height > frame.base + V02.rimH) break;
-      band = track(band.add(csCtor.ofPolygons(envelope.sections[k].loops as number[][][], 'EvenOdd')));
-    }
+    // Seating rim, built as a 2D ring. The exclusion band must be the cavity's
+    // EXACT silhouette over the rim prism's whole vert-span: the cavity loft
+    // interpolates between rings, so a band of rings below base+rimH misses the
+    // interpolation toward the next (possibly much fatter) ring — measured
+    // 3.9 mm³ intrusion on an 11 cm flat master that was clean at 18 cm
+    // (ring step 1.475 mm vs rimH 2.2 mm lands mid-interpolation). Project the
+    // cavity slab along the vert axis instead — sampled unions are wrong at any
+    // fixed step for sharp-edged masters.
+    let cavityV = cavitySolid;
+    if (v === 0) cavityV = track(track(cavitySolid.rotate(0, -90, 0)).rotate(0, 0, -90));
+    if (v === 1) cavityV = track(track(cavitySolid.rotate(90, 0, 0)).rotate(0, 0, 90));
+    const rimSlab = track(track(cavityV.trimByPlane([0, 0, 1], frame.base))
+      .trimByPlane([0, 0, -1], -(frame.base + K.rimH)));
     const rimCS = track(track(plateOutlineCS.offset(-0.3, 'Round', 2, 48))
-      .subtract(track(band.offset(0.05, 'Round', 2, 48))).simplify(1e-4));
-    const rimBlock = track(prismOnVert(rimCS, v, frame.base, frame.base + V02.rimH));
+      .subtract(track(rimSlab.project().offset(0.05, 'Round', 2, 48))).simplify(1e-4));
+    const rimBlock = track(prismOnVert(rimCS, v, frame.base, frame.base + K.rimH));
     jacket = track(jacket.add(rimBlock));
     if (!isOk(jacket) || jacket.volume() < 1) throw new Error('Jacket has no valid volume');
 
@@ -341,18 +427,20 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
     let localCavity = cavitySolid;
     if (p === 0) localCavity = track(track(cavitySolid.rotate(0, -90, 0)).rotate(0, 0, -90));
     if (p === 1) localCavity = track(track(cavitySolid.rotate(90, 0, 0)).rotate(0, 0, 90));
-    // The cavity is shape-following (non-convex), so chords inside the rail's
-    // ±2.5 mm span are NOT nested — union them so the rail clears the cavity
-    // over its whole span, then keep the 0.2 mm weld margin.
-    let cavitySection = track(localCavity.slice(frame.mid));
-    for (const d of [-2.5, 2.5]) {
-      const s = track(localCavity.slice(frame.mid + d));
-      if (s.area() > 1e-6) cavitySection = track(cavitySection.add(s));
-    }
-    const railSection = track(track(outerSection.offset(7, 'Round', 2, 32))
-      .subtract(track(cavitySection.offset(0.2, 'Round', 2, 48))).simplify(1e-4));
+    // The cavity is shape-following (non-convex) and its silhouette can jump
+    // discontinuously within the rail's ±railHalfW span (sharp master edges,
+    // disjoint islands on flat masters) — sampled sections miss those jumps at
+    // ANY fixed step (measured: an 11 cm flat master intruded 3.9 mm³ that
+    // extracted clean at 18 cm). The sampled union is approximating the slab's
+    // projection, so take the projection exactly: cavity ∩ slab[mid±railHalfW],
+    // projected along the pull axis, is the swept max-section the rail prism
+    // must clear.
+    const slab = track(track(localCavity.trimByPlane([0, 0, 1], frame.mid - K.railHalfW))
+      .trimByPlane([0, 0, -1], -(frame.mid + K.railHalfW)));
+    const railSection = track(track(outerSection.offset(K.railOffset, 'Round', 2, 32))
+      .subtract(track(slab.project().offset(0.2, 'Round', 2, 48))).simplify(1e-4));
     const vertical = UNIT[frame.vert];
-    const rail = track(track(track(prismOnPull(railSection, p, frame.mid - 2.5, frame.mid + 2.5))
+    const rail = track(track(track(prismOnPull(railSection, p, frame.mid - K.railHalfW, frame.mid + K.railHalfW))
       .trimByPlane([...vertical], frame.base))
       .trimByPlane(vertical.map(x => -x), -frame.crown));
     // Union without re-cutting the cavity: a second subtract along faces that
@@ -361,7 +449,7 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
     // cannot reach the cavity — assert that invariant instead of re-cutting.
     jacket = track(jacket.add(rail));
     const intrusion = track(jacket.intersect(cavitySolid));
-    if (intrusion.volume() > 0.01) throw new Error('clamp rails intrude into the silicone cavity');
+    if (intrusion.volume() > 0.01) throw new Error('jacket rim or clamp rails intrude into the silicone cavity');
     let localRail = rail;
     if (v === 0) localRail = track(track(rail.rotate(0, -90, 0)).rotate(0, 0, -90));
     if (v === 1) localRail = track(track(rail.rotate(90, 0, 0)).rotate(0, 0, 90));
@@ -375,7 +463,7 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
     // to the cavity — the intrusion guard below stays the authority.
     if (params.ribs) {
       progress('Adding external stiffening ribs', 0.55);
-      const RIB_DEPTH = 8, RIB_W = 2;
+      const RIB_DEPTH = K.ribDepth, RIB_W = K.ribW;
       const mb = bboxOfArrays(master);
       const u3 = (v + 1) % 3, v3 = (v + 2) % 3;
       const cu = mb.min[u3] + mb.dim[u3] / 2, cw = mb.min[v3] + mb.dim[v3] / 2;
@@ -457,13 +545,13 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
       if (v === 0) jacketV = track(track(jacket.rotate(0, -90, 0)).rotate(0, 0, -90));
       if (v === 1) jacketV = track(track(jacket.rotate(90, 0, 0)).rotate(0, 0, 90));
       const s0 = track(jacketV.slice(frame.base + 0.05));
-      const s1 = track(jacketV.slice(frame.base + V02.footReliefH * 0.5 + 0.05));
+      const s1 = track(jacketV.slice(frame.base + K.footReliefH * 0.5 + 0.05));
       const cut0CS = track(track(s0.offset(0.5, 'Round', 2, 32))
-        .subtract(track(s0.offset(-V02.footReliefC, 'Round', 2, 32))).simplify(1e-4));
+        .subtract(track(s0.offset(-K.footReliefC, 'Round', 2, 32))).simplify(1e-4));
       const cut1CS = track(track(s1.offset(0.5, 'Round', 2, 32))
-        .subtract(track(s1.offset(-V02.footReliefC / 2, 'Round', 2, 32))).simplify(1e-4));
-      const cut0 = track(prismOnVert(cut0CS, v, frame.base, frame.base + V02.footReliefH * 0.5));
-      const cut1 = track(prismOnVert(cut1CS, v, frame.base + V02.footReliefH * 0.5, frame.base + V02.footReliefH));
+        .subtract(track(s1.offset(-K.footReliefC / 2, 'Round', 2, 32))).simplify(1e-4));
+      const cut0 = track(prismOnVert(cut0CS, v, frame.base, frame.base + K.footReliefH * 0.5));
+      const cut1 = track(prismOnVert(cut1CS, v, frame.base + K.footReliefH * 0.5, frame.base + K.footReliefH));
       jacket = track(track(jacket.subtract(cut0)).subtract(cut1));
       if (!isOk(jacket)) throw new Error('kernel rejected the elephant-foot relief');
     }
@@ -501,7 +589,7 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
 
     progress('Machining tongue, groove and vents', 0.6);
     const jointed = machineJoint(
-      { mod, track, ref: jacket, axis, mid: frame.mid, wall, clearance: params.clearance, label: 'main joint', flip: !tongueIsPositive },
+      { mod, track, ref: jacket, axis, mid: frame.mid, wall, clearance: params.clearance, label: 'main joint', flip: !tongueIsPositive, K },
       tongueIsPositive ? halfPos : halfNeg,
       tongueIsPositive ? halfNeg : halfPos,
     );
@@ -523,7 +611,7 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
       if (b1raw.volume() < 1 || b2raw.volume() < 1) throw new Error('3-piece sub-split produced an empty half');
       const bRef = track(b1raw.add(b2raw));
       const subJointed = machineJoint(
-        { mod, track, ref: bRef, axis: frame.depth, mid: dmid, wall, clearance: params.clearance, label: 'sub joint' },
+        { mod, track, ref: bRef, axis: frame.depth, mid: dmid, wall, clearance: params.clearance, label: 'sub joint', K },
         b1raw, b2raw,
       );
       b1 = subJointed.pos;
@@ -597,7 +685,7 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
     }
 
     progress('Building the contoured base plate', 0.9);
-    const plateBlank = track(prismOnVert(plateOutlineCS, v, frame.base - V02.plateT, frame.base));
+    const plateBlank = track(prismOnVert(plateOutlineCS, v, frame.base - K.plateT, frame.base));
     let localMaster = masterMan;
     if (v === 0) localMaster = track(track(masterMan.rotate(0, -90, 0)).rotate(0, 0, -90));
     if (v === 1) localMaster = track(track(masterMan.rotate(90, 0, 0)).rotate(0, 0, 90));
@@ -627,6 +715,7 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
       panels: b1Arr ? 3 : 2,
       jacketDim,
       plateDim,
+      plateT: K.plateT,
       ports,
       siliconeMl,
       cavityLoops,
@@ -723,6 +812,7 @@ export interface MoldPackage {
   panels: 2 | 3;
   jacketDim: [number, number, number];
   plateDim: [number, number, number];
+  plateT: number;
   ports: PortsPlan;
   siliconeMl: number;
   cavityLoops: Loops;

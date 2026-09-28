@@ -21,6 +21,7 @@ import type { Loops } from './contours';
 interface CSLike {
   area(): number;
   hull(): CSLike;
+  simplify(epsilon: number): CSLike;
   offset(c: number, join?: string, m?: number, seg?: number): CSLike;
   toPolygons(): number[][][];
   add(o: CSLike): CSLike;
@@ -88,39 +89,9 @@ export function buildEnvelope(
   const span = Math.min(Math.max(window, step), gap);
   const subs = [-span, -span / 2, 0, span / 2, span];
 
-  // --- cavity rings (CrossSections in the rotated frame, (u,w) coordinates) ---
-  const rings: CSLike[] = [];
-  let prev: CSLike | null = null;
-  for (let k = 0; k <= count; k++) {
-    const z = frame.base + k * step;
-    let merged: CSLike | null = null;
-    for (const d of subs) {
-      const zs = z + d;
-      if (zs < frame.base - 1e-9 || zs > frame.crown + 1e-9) continue;
-      const s = track(slicer.slice(zs));
-      if (s.area() <= 1e-6) continue;
-      merged = merged ? track(merged.add(s)) : track(s);
-    }
-    let ring: CSLike | null = null;
-    if (merged && merged.area() > 1e-6) {
-      let r = track(merged.offset(gap + 0.1, 'Round', 2, 48));
-      if (r.toPolygons().length > 1) r = track(r.hull().offset(gap + 0.1, 'Round', 2, 48));
-      if (prev) {
-        const floor = track(prev.offset(-slope * step, 'Round', 2, 32));
-        if (floor.area() > 1e-6) r = track(r.add(floor));
-      }
-      ring = r;
-    } else if (prev) {
-      ring = prev; // vertical freeboard walls above the master
-    }
-    if (!ring) throw new Error('envelope ring collapsed at the base — master has no usable footprint');
-    rings.push(ring);
-    prev = ring;
-  }
-
-  // --- polygon extraction: largest loop, resampled to N_SAMPLES arc-length
-  // points, CCW, canonical start (rightmost point) so the loft's vertex
-  // correspondence is consistent across rings ---
+  // --- polygon extraction helpers (hoisted above the ring loop: every ring is
+  // resampled to N_SAMPLES points immediately, so the ratchet and all later
+  // offsets run on a bounded vertex count) ---
   // Radial (angular) resampling: sample every ring at N uniform angles from
   // its centroid, taking the FARTHEST boundary hit per ray. Unlike arc-length
   // resampling, the same angle always maps to the same feature direction, so
@@ -163,6 +134,53 @@ export function buildEnvelope(
     }
     return best;
   };
+  const csFromLoop = (poly: number[][]): CSLike =>
+    track(csCtor.ofPolygons([poly as unknown as number[][]], 'EvenOdd') as unknown as CSLike);
+
+  // --- cavity rings (CrossSections in the rotated frame, (u,w) coordinates) ---
+  const rings: CSLike[] = [];
+  let prev: CSLike | null = null;
+  for (let k = 0; k <= count; k++) {
+    const z = frame.base + k * step;
+    let merged: CSLike | null = null;
+    for (const d of subs) {
+      const zs = z + d;
+      if (zs < frame.base - 1e-9 || zs > frame.crown + 1e-9) continue;
+      const s = track(slicer.slice(zs));
+      if (s.area() <= 1e-6) continue;
+      merged = merged ? track(merged.add(s)) : track(s);
+    }
+    let ring: CSLike | null = null;
+    if (merged && merged.area() > 1e-6) {
+      // Simplify BEFORE offsetting: wool/tessellation micro-corners multiply
+      // through the 48-segment round joins, and the ratchet feeds each dense
+      // ring into the next offset — measured 1.1k → 68k verts over ten rings
+      // with quadratic offset time (minutes per model). 0.1 mm is two orders
+      // below the silicone gap and far below the print resolution.
+      const sm = track(merged.simplify(0.1));
+      let r = track(sm.offset(gap + 0.1, 'Round', 2, 48));
+      if (r.toPolygons().length > 1) r = track(r.hull().offset(gap + 0.1, 'Round', 2, 48));
+      // resample to the working resolution, then apply the upward-shrink
+      // ratchet on the light polygon and re-resample once
+      let poly = resampleLoop(largestLoop(r.toPolygons()));
+      let rcs = csFromLoop(poly);
+      if (prev) {
+        const floor = track(prev.offset(-slope * step, 'Round', 2, 32));
+        if (floor.area() > 1e-6) {
+          rcs = track(rcs.add(floor));
+          poly = resampleLoop(largestLoop(rcs.toPolygons()));
+          rcs = csFromLoop(poly);
+        }
+      }
+      ring = rcs;
+    } else if (prev) {
+      ring = prev; // vertical freeboard walls above the master
+    }
+    if (!ring) throw new Error('envelope ring collapsed at the base — master has no usable footprint');
+    rings.push(ring);
+    prev = ring;
+  }
+
   const ringPolygons: [number, number][][] = rings.map((r) => resampleLoop(largestLoop(r.toPolygons())));
 
   const offsetPolygons = (ring: [number, number][], c: number): [number, number][] => {
@@ -201,7 +219,12 @@ export function buildEnvelope(
   const release = loftPolygons(ringPolygons.map((r) => offsetPolygons(r, -0.02)));
   const clearance = loftPolygons(ringPolygons.map((r) => offsetPolygons(r, -1.0)));
 
-  // plate bases: master shadow and widest ring, in (u,w) coordinates
+  // plate bases: the FULL master shadow (outer boundaries only) and the widest
+  // ring, in (u,w) coordinates. Multi-loop on purpose: a flat text/sign master
+  // slices into disjoint letter islands — taking the single largest loop
+  // stranded the base plate on one island, halfway off the master. Holes are
+  // dropped (negative signed area) so the plate stays solid under ring-shaped
+  // letters; the union CS in split.ts offsets every loop.
   let shadow: CSLike | null = null;
   for (let k = 0; k <= count; k++) {
     const z = frame.base + k * step;
@@ -211,15 +234,24 @@ export function buildEnvelope(
       shadow = shadow ? track(shadow.add(s)) : track(s);
     }
   }
-  const shadowPoly = shadow ? resampleLoop(largestLoop(shadow.toPolygons())) : ringPolygons[0];
-  let widestRing = ringPolygons[0], widestArea = -1;
-  for (const r of ringPolygons) {
+  const signedArea2 = (loop: number[][]): number => {
     let a2 = 0;
-    for (let i = 0; i < r.length; i++) {
-      const [x1, y1] = r[i], [x2, y2] = r[(i + 1) % r.length];
+    for (let i = 0; i < loop.length; i++) {
+      const [x1, y1] = loop[i], [x2, y2] = loop[(i + 1) % loop.length];
       a2 += x1 * y2 - x2 * y1;
     }
-    if (Math.abs(a2) > widestArea) { widestArea = Math.abs(a2); widestRing = r; }
+    return a2;
+  };
+  let footprint: number[][][] = [];
+  if (shadow) {
+    const polys = shadow.toPolygons();
+    const outers = polys.filter((p) => signedArea2(p) > 0);
+    footprint = outers.length > 0 ? outers : polys;
+  }
+  let widestRing = ringPolygons[0], widestArea = -1;
+  for (const r of ringPolygons) {
+    const a2 = Math.abs(signedArea2(r as unknown as number[][]));
+    if (a2 > widestArea) { widestArea = a2; widestRing = r; }
   }
 
   for (const x of junk) { try { x.delete(); } catch { /* freed */ } }
@@ -228,8 +260,8 @@ export function buildEnvelope(
     outer,
     release,
     clearance,
-    footprint: [shadowPoly],
-    widest: [widestRing],
-    sections: ringPolygons.map((ring, k) => ({ height: frame.base + k * step, loops: [ring] })),
+    footprint: (footprint.length > 0 ? footprint : [ringPolygons[0]]) as unknown as Loops,
+    widest: [widestRing] as unknown as Loops,
+    sections: ringPolygons.map((ring, k) => ({ height: frame.base + k * step, loops: [ring] as unknown as Loops })),
   };
 }

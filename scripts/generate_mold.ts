@@ -23,7 +23,6 @@ import { parseObj } from '../src/engine/obj';
 import { parseStlBinary } from '../src/engine/stl';
 import { buildPrintFiles } from '../src/engine/export';
 import { analyzePieces } from '../src/engine/printability';
-import { V02 } from '../src/engine/split';
 import { generateMoldPackage, pickFrame } from '../src/engine/split';
 import type { Axis, MeshArrays } from '../src/engine/types';
 
@@ -200,7 +199,7 @@ const printability = analyzePieces({
   jackets: is3pc
     ? [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B1', mesh: pkg.pieces.jacketB1! }, { name: 'jacket_B2', mesh: pkg.pieces.jacketB2! }]
     : [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B', mesh: pkg.pieces.jacketB! }],
-  vert: pkg.frame.vert, base: pkg.frame.base, crown: pkg.frame.crown, plateT: V02.plateT,
+  vert: pkg.frame.vert, base: pkg.frame.base, crown: pkg.frame.crown, plateT: pkg.plateT,
 });
 for (const [name, r] of Object.entries(printability)) {
   console.log(`  ${name}: bed ${r.bedAreaMm2} mm² · unsupported @45° ${r.overhangAreaMm2} mm²` +
@@ -221,6 +220,7 @@ const bbOf = (m: MeshArrays) => {
 let files: Record<string, Uint8Array>, zip: Uint8Array, fileName: string;
 try {
   ({ files, zip, fileName } = buildPrintFiles({
+    mod,
     masterBase,
     parts: { ...pkg.pieces, siliconeSkin: pkg.pieces.skin, master: full, masterBase },
     info: {

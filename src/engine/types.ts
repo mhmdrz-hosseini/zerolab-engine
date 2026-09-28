@@ -81,6 +81,9 @@ export interface GenerateResult {
   }>;
   masterScale?: number;                    // echo of params.masterScale (size feature)
   partVolumesCm3?: Record<string, number>; // printed-part volumes for mass estimates (size feature)
+  frame?: { vert: Axis; base: number; plateT: number }; // mold orientation for the
+                         // viewer: base plate ⊥ `vert` with its top plane at `base`;
+                         // plateT = scaled plate thickness (plate bottom = base − plateT)
 }
 
 // ---- worker protocol ----

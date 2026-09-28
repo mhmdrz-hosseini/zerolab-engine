@@ -93,7 +93,7 @@ function perComponentVolume(vp: Float32Array, tv: Uint32Array, find: (i: number)
  *  multiplies boundary edges — measured boundary 46 → 163). The few
  *  non-manifold fusions this can produce on coplanar geometry are repaired
  *  downstream (repairTopology, then the kernel rescue in cleanExportMesh). */
-export function quantizeMerge(vp: Float32Array, tv: Uint32Array): { vp: Float32Array; tv: Uint32Array; merged: number } {
+export function quantizeMerge(vp: Float32Array, tv: Uint32Array, epsOverride?: number): { vp: Float32Array; tv: Uint32Array; merged: number } {
   const n = vp.length / 3;
   let bboxMax = 0;
   for (let i = 0; i < n; i++) {
@@ -102,7 +102,7 @@ export function quantizeMerge(vp: Float32Array, tv: Uint32Array): { vp: Float32A
       if (v > bboxMax) bboxMax = v;
     }
   }
-  const eps = Math.max(1e-4, bboxMax * 2e-6); // mm — ≥ float32 noise, ≪ feature spacing
+  const eps = epsOverride ?? Math.max(1e-4, bboxMax * 2e-6); // mm — ≥ float32 noise, ≪ feature spacing
   const Q = 1 / eps;
   const remap = new Int32Array(n).fill(-1);
   // open-addressing hash over quantized int coords — a string-keyed Map on
@@ -516,6 +516,14 @@ function auditScore(a: MeshAudit): number {
 export function cleanExportMesh(m: MeshArrays, mod?: ManifoldMod): CleanedMesh {
   const trisBefore = m.triVerts.length / 3;
   let r = cleanOnce(m);
+  // STL round-trip contract (reliability brief §13): parseStlBinary welds at a
+  // 1 µm grid — any vertex pair closer than that collapses in the reloaded
+  // file (and in slicers), turning surviving sub-µm slivers into degenerate
+  // faces even though the in-memory audit saw them as valid. Re-weld the
+  // export at the parser's own grid and re-clean, so the shipped bytes reload
+  // exactly as clean as the audit claims.
+  const requantized = quantizeMerge(r.vp, r.tv, 1e-3);
+  r = cleanOnce({ vertProperties: requantized.vp, triVerts: requantized.tv });
   let audit = auditMeshArrays(r.vp, r.tv);
 
   if (mod && (!audit.watertight || audit.degenerateTris > 0 || audit.zeroVolumeComponents > 0)) {

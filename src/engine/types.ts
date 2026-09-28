@@ -61,6 +61,22 @@ export interface GenerateParams {
                        // 2 mm wall capability, every FDM fit is floored at 3 mm
 }
 
+// Functional manufacturing minimums (reliability brief §1/§2) — applied AFTER
+// master scaling, in the size panel and again as a defensive floor in the
+// worker. Scaling may shrink a frame, never below these: undercuts don't
+// shrink with the master and a thin silicone skin tears on pull (>10% trapped
+// rays = complex pull), and no FDM printer holds a jacket body below 3 mm
+// (resin keeps its 2 mm capability).
+export function functionalFloors(
+  trappedPct: number,
+  fit?: GenerateParams['fit'],
+): { gap: number; wall: number } {
+  return {
+    gap: trappedPct > 10 ? 5 : 4,
+    wall: fit === 'resin' ? 2 : 3,
+  };
+}
+
 export interface GenerateResult {
   parts: Record<string, MeshArrays>;
   siliconeMl: number;

@@ -15,7 +15,7 @@ import { parseObj } from '../engine/obj';
 import { generateMoldPackage, pickFrame } from '../engine/split';
 import { parseStlBinary } from '../engine/stl';
 import { weldMesh } from '../engine/weld';
-import { AXES, type AnalysisReport, type GenerateParams, type GenerateResult, type MeshArrays, type WorkerRequest, WorkerResponse } from '../engine/types';
+import { AXES, functionalFloors, type AnalysisReport, type GenerateParams, type GenerateResult, type MeshArrays, type WorkerRequest, WorkerResponse } from '../engine/types';
 
 const ctx = self as unknown as Worker;
 let mod: ManifoldMod | null = null;
@@ -163,9 +163,9 @@ async function generate(params: GenerateParams): Promise<void> {
   // Resin keeps its 2 mm wall capability via the fit param; every FDM fit
   // floors at 3 mm — no jacket body below one FDM-safe wall.
   const trappedPct = state.report.axes[0]?.trappedPct ?? 0;
-  const safeGapFloor = trappedPct > 10 ? 5 : 4;
-  const gap = Math.min(15, Math.max(safeGapFloor, params.gap));
-  const wall = Math.min(8, Math.max(params.fit === 'resin' ? 2 : 3, params.wall)); // 8: Heavy 6.5 preset must survive the clamp
+  const floors = functionalFloors(trappedPct, params.fit);
+  const gap = Math.min(15, Math.max(floors.gap, params.gap));
+  const wall = Math.min(8, Math.max(floors.wall, params.wall)); // 8: Heavy 6.5 preset must survive the clamp
   const m = await ensureMod();
   const t0 = Date.now();
 

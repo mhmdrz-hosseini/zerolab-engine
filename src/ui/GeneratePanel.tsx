@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { GenerateParams, GenerateResult } from '../engine/types';
+import { functionalFloors } from '../engine/types';
 import { frameConstants } from '../engine/split';
 import { useStore } from '../state/store';
 import { te, useT } from '../i18n';
@@ -119,8 +120,9 @@ export function GeneratePanel() {
   // shapes (>10% trapped rays) tear a thin silicone skin on pull; FDM cannot
   // print a jacket body below 3 mm (resin keeps its 2 mm capability).
   const trappedPct = report.axes[0]?.trappedPct ?? 0;
-  const minGap = trappedPct > 10 ? 5 : 4;
-  const minWall = f.id === 'resin' ? 2 : 3;
+  const floors = functionalFloors(trappedPct, f.id);
+  const minGap = floors.gap;
+  const minWall = floors.wall;
   // scale-aware frame params for a given solved scale — computed per call so a
   // size commit never mixes the new masterScale with the old render's gap/wall
   // (stale closure sent gap 8 at a 5 cm master; the clearance gate rightly

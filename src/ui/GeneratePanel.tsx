@@ -114,14 +114,21 @@ export function GeneratePanel() {
     return Math.min(280 / maxMasterDim, Math.max(20 / maxMasterDim, targetMm / maxMasterDim));
   };
   const k = solveK(cm * 10);
+  // functional manufacturing minimums (reliability brief §1) — applied AFTER
+  // master scaling: scaling may shrink the frame, never below these. Complex
+  // shapes (>10% trapped rays) tear a thin silicone skin on pull; FDM cannot
+  // print a jacket body below 3 mm (resin keeps its 2 mm capability).
+  const trappedPct = report.axes[0]?.trappedPct ?? 0;
+  const minGap = trappedPct > 10 ? 5 : 4;
+  const minWall = f.id === 'resin' ? 2 : 3;
   // scale-aware frame params for a given solved scale — computed per call so a
   // size commit never mixes the new masterScale with the old render's gap/wall
   // (stale closure sent gap 8 at a 5 cm master; the clearance gate rightly
   // blocked the export)
   const paramsFor = (kk: number): GenerateParams => {
     const sK = scaleFor(maxMasterDim * kk);
-    const gapK = halfMm(Math.max(2, p.gap * sK));
-    const wallK = Math.max(2, halfMm((f.id === 'resin' ? 2 : w.wall) * sK));
+    const gapK = halfMm(Math.max(minGap, p.gap * sK));
+    const wallK = Math.max(minWall, halfMm((f.id === 'resin' ? 2 : w.wall) * sK));
     return {
       gap: gapK,
       wall: wallK,
@@ -129,12 +136,13 @@ export function GeneratePanel() {
       gapWindow: envelope === 'tight' ? Math.max(1.5, gapK / 2) : undefined,
       ribs,
       material,
+      fit: f.id,
     };
   };
   const effMasterMm = maxMasterDim * k;
   const s = scaleFor(effMasterMm);
-  const effGap = halfMm(Math.max(2, p.gap * s));
-  const effWall = Math.max(2, halfMm((f.id === 'resin' ? 2 : w.wall) * s));
+  const effGap = halfMm(Math.max(minGap, p.gap * s));
+  const effWall = Math.max(minWall, halfMm((f.id === 'resin' ? 2 : w.wall) * s));
   const K = frameConstants(effMasterMm);
 
   const params: GenerateParams = paramsFor(k);
@@ -251,6 +259,9 @@ export function GeneratePanel() {
           {t('gen.ribs')}
         </button>
       </div>
+      {effMasterMm >= 150 && wall === 'light' && !ribs && (
+        <div className="hint dim" style={{ color: 'var(--warn)', margin: '2px 0 0' }}>{t('gen.ribs.recommended')}</div>
+      )}
       <div className="chips">
         {ENVELOPES.map((x) => (
           <button key={x.id} className={`chip${envelope === x.id ? ' on' : ''}`} onClick={() => setEnvelope(x.id)} disabled={busy} title={t(x.noteKey)}>
@@ -300,6 +311,9 @@ export function GeneratePanel() {
               </div>
             );
           })()}
+          {envelope === 'full' && result.clearanceBand && result.clearanceBand.p50 > result.clearanceBand.requestedGap * 1.4 && (
+            <div className="hint dim" style={{ color: 'var(--warn)' }}>{t('gen.efficiency.low')}</div>
+          )}
           {(() => {
             const pr = result.printability;
             if (!pr) return null;

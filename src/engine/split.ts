@@ -71,7 +71,9 @@ export function frameConstants(maxMasterDim: number): FrameConstants {
   const mm = (ref: number, floor: number) => Math.max(floor, ref * s);
   return {
     plateMargin: mm(V02.plateMargin, 6),
-    plateT: mm(V02.plateT, 2),
+    // physical floor (reliability brief §3): proportional scaling at tiny
+    // masters thinned the plate below what a printed base needs to stay flat
+    plateT: mm(V02.plateT, 3.5),
     rimH: mm(V02.rimH, 1.5),
     freeboard: mm(V02.freeboard, 4),
     tongue: mm(V02.tongue, 1),

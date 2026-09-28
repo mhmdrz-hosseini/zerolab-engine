@@ -56,6 +56,9 @@ export interface GenerateParams {
                        // master before generation; 1 = untouched. The generation
                        // pipeline itself is byte-identical to aea5dc3 — it simply
                        // receives a pre-scaled master; gap/wall stay absolute mm.
+  fit?: 'resin' | 'calibrated' | 'standard' | 'loose'; // joint-fit selection — the only
+                       // print-process distinction the worker knows: resin keeps the
+                       // 2 mm wall capability, every FDM fit is floored at 3 mm
 }
 
 export interface GenerateResult {

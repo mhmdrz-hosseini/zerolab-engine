@@ -156,10 +156,16 @@ async function ingest(fileName: string, bytes: ArrayBuffer): Promise<void> {
 
 async function generate(params: GenerateParams): Promise<void> {
   if (!state) throw new Error('Import a master first');
-  // gap/wall arrive master-scale-aware from the size panel (small masters get
-  // proportionally smaller frames); hard clamps keep kernel validity only
-  const gap = Math.min(15, Math.max(2, params.gap));
-  const wall = Math.min(8, Math.max(2, params.wall)); // 8: Heavy 6.5 preset must survive the clamp
+  // gap/wall arrive master-scale-aware from the size panel; the floors are
+  // functional manufacturing minimums (reliability brief §2), not kernel limits —
+  // they protect CLI/API callers the same way the UI floors protect the panel.
+  // Complex shapes (>10% trapped rays) tear a thin silicone skin on pull.
+  // Resin keeps its 2 mm wall capability via the fit param; every FDM fit
+  // floors at 3 mm — no jacket body below one FDM-safe wall.
+  const trappedPct = state.report.axes[0]?.trappedPct ?? 0;
+  const safeGapFloor = trappedPct > 10 ? 5 : 4;
+  const gap = Math.min(15, Math.max(safeGapFloor, params.gap));
+  const wall = Math.min(8, Math.max(params.fit === 'resin' ? 2 : 3, params.wall)); // 8: Heavy 6.5 preset must survive the clamp
   const m = await ensureMod();
   const t0 = Date.now();
 
@@ -292,6 +298,17 @@ async function generate(params: GenerateParams): Promise<void> {
   // Preserve the master. The slicer controls infill; sealed CAD hollows can
   // introduce unsupported ceilings and disconnected internal surfaces.
   const extraWarnings: string[] = [];
+  // The preliminary ray analysis only ranks candidates; the final rigid-jacket
+  // extraction simulation is authoritative. Explain the downgrade instead of
+  // letting the axis change look like a bug (reliability brief §6).
+  if (pkg.axis !== state.report.bestAxis) {
+    extraWarnings.push(`${state.report.bestAxis} was the best preliminary pull axis, but it failed the final rigid-jacket extraction test — ${pkg.axis} was selected as the first extractable split`);
+  }
+  // Connectivity is not an air-trap solver: with no vents and a big or
+  // undercuts-heavy pour, flag local high points for manual review (brief §7).
+  if (pkg.ports.vents.length === 0 && (pkg.siliconeMl > 150 || trappedPct > 10)) {
+    extraWarnings.push('No automatic air vents were generated. Review local high points before the production pour.');
+  }
   const masterFinal = master;
 
   // master_base = (hollowed) doll ∪ fused base plate — V0.2 architecture

@@ -6,7 +6,7 @@ import { zipSync, type Zippable } from 'fflate';
 import { writeStlBinary } from './stl';
 import { cleanExportMesh, type MeshAudit } from './clean';
 import type { ManifoldMod } from './manifoldLoader';
-import type { GenerateParams, MeshArrays } from './types';
+import type { Axis, GenerateParams, MeshArrays } from './types';
 
 export interface PackageInfo {
   name: string;
@@ -26,6 +26,7 @@ export interface PackageInfo {
     bedAreaMm2: number; overhangAreaMm2: number; layerStep: number; layers: number;
     worstBands: { zLo: number; zHi: number; areaMm2: number }[];
   }>;
+  frame?: { vert: Axis; base: number; plateT: number }; // mold vertical + base plane — drives the slicer orientation guidance
 }
 
 export interface PrintFiles {
@@ -114,8 +115,9 @@ export function buildPrintFiles(deps: {
     jacketOuterMm: info.jacketDim.map((d) => Number(d.toFixed(1))),
     basePlateMm: info.plateDim.map((d) => Number(d.toFixed(1))),
     ports: { crown: null as null, ventCount: info.ventCount },
-    clearanceBand: info.clearanceBand,
-    printability: info.printability,
+    clearanceBand: info.clearanceBand ?? null,
+    printability: info.printability ?? null,
+    frame: info.frame ?? null,
     castingMaterial: info.params.material ?? null,
     hardware: ['6–10 binder clips (25–32 mm), gripping the flat external seam rails'],
     validation: info.checks,

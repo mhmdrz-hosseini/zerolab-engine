@@ -402,6 +402,11 @@ async function exportPackage(): Promise<void> {
       checks: r.checks,
       crown: r.ports.crown,
       ventCount: r.ports.vents,
+      // same-generation diagnostics: project.json / assembly.md /
+      // print_profile.json must reflect exactly what the user was shown
+      clearanceBand: r.clearanceBand,
+      printability: r.printability,
+      frame: r.frame,
     },
   });
   const blob = zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.byteLength) as ArrayBuffer;

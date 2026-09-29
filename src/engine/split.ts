@@ -97,6 +97,7 @@ export interface CS {
   mirror(normal: [number, number]): CS;
   simplify(epsilon?: number): CS;
   area(): number;
+  bounds(): { min: [number, number]; max: [number, number] };
   union(other: CS): CS;
   subtract(other: CS): CS;
   add(other: CS): CS;

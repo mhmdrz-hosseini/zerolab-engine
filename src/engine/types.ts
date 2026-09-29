@@ -132,3 +132,11 @@ export type WorkerResponse =
 export function trisOf(m: MeshArrays): number {
   return m.triVerts.length / 3;
 }
+
+// ---- mold-method selection (plan Task 5, M1) ----
+export type InputRole = 'positive_master' | 'prebuilt_negative_mold' | 'tooling' | 'unknown';
+export type RequiredSurfaces = 'front_only' | 'all_sides' | 'inner_and_outer' | 'unspecified';
+export interface CastingIntent {
+  inputRole: InputRole;
+  requiredSurfaces: RequiredSurfaces;
+}

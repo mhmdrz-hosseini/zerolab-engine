@@ -10,6 +10,7 @@
 // jacket — the M1 selector (moldMethod.ts / reliefTray.ts) slots into
 // chooseMethod without changing this pipeline.
 import { buildMoldForAxis, extractionFailText, extractionPass, pickFrame, type AxisAttempt } from './split';
+import { classifyMethods } from './moldMethod';
 import { runGates, type GateCheck } from './gates';
 import { buildPrintFiles, type PrintFiles, type ReleaseReport } from './export';
 import { analyzePieces } from './printability';
@@ -149,6 +150,7 @@ export interface PlanRequest {
   name: string;
   source: PlanSource;
   ports?: boolean;
+  castingIntent?: { inputRole: 'positive_master' | 'prebuilt_negative_mold' | 'tooling' | 'unknown'; requiredSurfaces: 'front_only' | 'all_sides' | 'inner_and_outer' | 'unspecified' };
   extraWarnings?: string[];       // caller-specific (parse warnings, intake notes)
   // Export prep (cleanup + serialized-bytes final audit) always runs INSIDE the
   // candidate loop: a candidate whose export would fail must yield to the next
@@ -262,10 +264,15 @@ export async function planMold(req: PlanRequest): Promise<PlanSuccess | PlanFail
       }
       const transforms = transformReport(pkg, master);
       const release = releaseOf(pkg);
+      const intent = req.castingIntent ?? { inputRole: 'positive_master' as const, requiredSurfaces: 'all_sides' as const };
+      const familyCandidates = classifyMethods(master, intent);
       const method = {
         family: 'full_3d_jacket', panels: pkg.panels, splitAxis: pkg.axis,
         confidence: 'heuristic-ladder',
-        note: 'generic split jacket with open crown — the mold-family selector (open-face relief / vessel-core) arrives with M1',
+        note: 'generic split jacket with open crown',
+        selectorTop: familyCandidates[0].method,
+        selectorReason: familyCandidates[0].reason,
+        selectorMeasures: familyCandidates[0].measures,
       } as const;
       const bbOf = (m: MeshArrays) => {
         const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];

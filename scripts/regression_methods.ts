@@ -113,7 +113,8 @@ function runCase(c: FrozenCase): Fresh {
       }
       const pj = JSON.parse(readFileSync(pjPath, 'utf8'));
       const v: string[] = [];
-      if (typeof pj.method !== 'string' || !pj.method) v.push('method missing/empty');
+      const method = pj.method as { family?: string; panels?: number; splitAxis?: string; confidence?: string } | null | undefined;
+      if (!method || typeof method.family !== 'string' || !method.family) v.push('method missing/empty');
       if (!pj.source || typeof pj.source.inputSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(pj.source.inputSha256)) v.push('source.inputSha256 missing');
       else if (c.sourceSha256 && pj.source.inputSha256 !== c.sourceSha256) v.push(`source.inputSha256 mismatch (got ${pj.source.inputSha256.slice(0, 12)}…)`);
       if (pj.source && pj.source.units !== 'mm') v.push('source.units not recorded as mm');
@@ -126,7 +127,7 @@ function runCase(c: FrozenCase): Fresh {
         outcomeClass: v.length ? 'exported_metadata_incomplete' : 'production_ready',
         failureStage: null, exitCode: 0, splitAxis,
         siliconeMl: typeof pj.siliconeMl === 'number' ? pj.siliconeMl : null,
-        deliveredMethod: typeof pj.method === 'string' ? pj.method : null,
+        deliveredMethod: (pj.method as { family?: string } | null | undefined)?.family ?? null,
         contractViolations: v,
         detail: `exported; silicone ${pj.siliconeMl} mL; axis ±${splitAxis}`,
         durationS,

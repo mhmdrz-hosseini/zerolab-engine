@@ -1,18 +1,17 @@
 /// <reference lib="webworker" />
 // Geometry worker — owns ALL mesh data (master, analysis mesh, SDF grid,
-// Manifold instances). UI state never holds meshes.
+// Manifold instances). UI state never holds meshes. Generation runs through
+// the SAME shared planner as the CLI (plan Task 4): identical candidate
+// ladder, gates, release staging and export metadata.
 import { buildReport, computeBBox, trappedColumnMask, validateMasterMesh } from '../engine/analyze';
-import { contoursAtLayer } from '../engine/contours';
 import { meshVolumeCm3 } from '../engine/clean';
 import { buildPrintFiles } from '../engine/export';
-import { runGates } from '../engine/gates';
 import { parseGlb } from '../engine/glb';
 import { isStatusOk, loadManifold, type ManifoldMod } from '../engine/manifoldLoader';
 import { extractIso, instanceToMeshArrays } from '../engine/offset';
 import { buildSignedDistanceGrid } from '../engine/offset';
-import { analyzePieces } from '../engine/printability';
 import { parseObj } from '../engine/obj';
-import { generateMoldPackage, pickFrame } from '../engine/split';
+import { planMold, rankSplitAxes, type PlanSuccess } from '../engine/planner';
 import { parseStlBinary } from '../engine/stl';
 import { weldMesh } from '../engine/weld';
 import { AXES, functionalFloors, type AnalysisReport, type GenerateParams, type GenerateResult, type MeshArrays, type WorkerRequest, WorkerResponse } from '../engine/types';
@@ -26,6 +25,10 @@ interface WorkerState {
   analysis: MeshArrays;   // decimated analysis mesh
   report: AnalysisReport;
   lastResult: GenerateResult | null;
+  fileSha256: string | null;  // digest of the ingested file bytes
+  normalizeNote: string | null; // ingest-time scale normalization record
+  lastPlan: PlanSuccess | null; // shared-planner decision + built package files
+
 }
 let state: WorkerState | null = null;
 
@@ -45,6 +48,11 @@ function statusOk(inst: { status(): number | string | { code?: number | string }
 async function ingest(fileName: string, bytes: ArrayBuffer): Promise<void> {
   post({ type: 'progress', stage: 'Parsing mesh', pct: 0.05 });
   const warnings: string[] = [];
+  // source identity (Task 4): digest of the EXACT bytes the user handed over
+  const fileSha256 = await crypto.subtle.digest('SHA-256', bytes).then(
+    (h) => [...new Uint8Array(h)].map((b) => b.toString(16).padStart(2, '0')).join(''),
+    () => null,
+  );
   let full: MeshArrays;
 
   const isGlb = bytes.byteLength > 12 && new DataView(bytes).getUint32(0, true) === 0x46546c67;
@@ -145,7 +153,13 @@ async function ingest(fileName: string, bytes: ArrayBuffer): Promise<void> {
     );
     report.warnings.unshift(...warnings);
     if (normalized) report.needsSizeConfirm = true;
-    state = { fileName, master: { vertProperties: full.vertProperties, triVerts: full.triVerts }, analysis, report, lastResult: null };
+    state = {
+      fileName, master: { vertProperties: full.vertProperties, triVerts: full.triVerts }, analysis, report, lastResult: null,
+      fileSha256, lastPlan: null,
+      normalizeNote: normalized
+        ? `ingest-normalized to a 150 mm default height; physical size must be confirmed in the size panel`
+        : null,
+    };
     post({ type: 'progress', stage: 'Done', pct: 1 });
     post({ type: 'analysis', report, preview: analysis });
   } finally {
@@ -194,74 +208,36 @@ async function generate(params: GenerateParams): Promise<void> {
     onProgress: (stage, pct) => post({ type: 'progress', stage, pct: 0.05 + pct * 0.55 }),
   });
 
-  // P8 quiet-line seam placement: among axes the ray screen calls clean
-  // (≤10% trapped), prefer the smoothest parting-plane contour
-  const quiet = new Map<string, number>();
-  for (const a of state.report.axes) {
-    try {
-      const fr = pickFrame(a.axis, state.analysis);
-      const loops = contoursAtLayer(grid, AXES.indexOf(a.axis), fr.mid, -gap);
-      if (loops.length === 0) continue;
-      let perim = 0, area = 0;
-      for (const loop of loops) {
-        for (let i = 0; i < loop.length; i++) {
-          const [x1, y1] = loop[i], [x2, y2] = loop[(i + 1) % loop.length];
-          perim += Math.hypot(x2 - x1, y2 - y1);
-          area += x1 * y2 - x2 * y1;
-        }
-      }
-      area = Math.abs(area) / 2;
-      if (area > 1) quiet.set(a.axis, perim / (2 * Math.sqrt(Math.PI * area)));
-    } catch { /* informational only */ }
-  }
-  const cleanAxes = state.report.axes.filter((a) => a.trappedPct <= 10);
-  const restAxes = state.report.axes.filter((a) => a.trappedPct > 10);
-  const rankedAxes = [
-    ...cleanAxes.sort((a, b) => (quiet.get(a.axis) ?? 99) - (quiet.get(b.axis) ?? 99)).map((a) => a.axis),
-    ...restAxes.sort((a, b) => a.trappedPct - b.trappedPct).map((a) => a.axis),
-  ];
+  // P8 quiet-line seam placement + the FULL candidate ladder (gap retry,
+  // release staging, gates, fusion, export prep) live in the shared planner —
+  // byte-identical policy to the CLI (plan Task 4).
+  const rankedAxes = rankSplitAxes(state.report.axes, state.analysis, grid, gap);
 
   post({ type: 'progress', stage: 'Splitting jacket and simulating extraction', pct: 0.65 });
-  const buildParams = (g: number) => ({
-    gap: g, wall, clearance: params.clearance,
-    verticalAxis: params.verticalAxis, splitAxis: params.splitAxis,
-    gapWindow: params.gapWindow === undefined ? undefined : Math.min(params.gapWindow, g / 2),
-    ribs: params.ribs, material: params.material, panels: params.panels,
-  });
-  // Gap-retry ladder: a master-scaled gap can fall below what the shape's
-  // undercuts need for rigid extraction (undercut depth scales with FEATURES,
-  // not master size — a 5 cm spiderman traps exactly like the 15 cm one).
-  // Retry at ascending extraction-safe gaps; the grid stays valid (its band is
-  // informational for the gates, the envelope works off kernel slices).
-  let effGap = gap;
-  let pkg = await generateMoldPackage({
-    mod: m, master, grid,
-    params: buildParams(gap),
-    rankedAxes,
+  const scaleNotes: string[] = [];
+  if (state.normalizeNote) scaleNotes.push(state.normalizeNote);
+  if (k !== 1) scaleNotes.push(`size panel scale ×${k.toFixed(4)} applied before analysis`);
+  const plan = await planMold({
+    mod: m, master, grid, rankedAxes,
+    params: { ...params, gap, wall },
+    name: state.fileName.replace(/\.[^.]+$/, ''),
+    source: {
+      inputSha256: state.fileSha256 ?? 'unavailable (hash failed)',
+      sourceKind: 'file', units: 'mm',
+      scalePolicy: scaleNotes.length ? scaleNotes.join('; ') : 'unscaled — file units taken as millimetres',
+      engineCommit: 'browser-runtime',
+    },
     ports: false,
-    onProgress: (stage, pct) => post({ type: 'progress', stage, pct: 0.65 + pct * 0.3 }),
+    // export prep (cleanup + serialized-bytes audit) runs INSIDE the candidate
+    // loop exactly as in the CLI — a candidate whose package would fail the
+    // final audit yields to the next one before the user ever sees it
+    extraWarnings: state.report.warnings,
+    onProgress: (stage, pct) => post({ type: 'progress', stage, pct: 0.65 + Math.min(pct, 1) * 0.3 }),
   });
-  if (!pkg && gap < 8) {
-    for (const g of [4, 6, 8].filter((x) => x > gap + 0.01)) {
-      post({ type: 'progress', stage: `Scaled gap ${gap} mm could not extract — retrying at ${g} mm`, pct: 0.65 });
-      pkg = await generateMoldPackage({
-        mod: m, master, grid,
-        params: buildParams(g),
-        rankedAxes,
-        ports: false,
-        onProgress: (stage, pct) => post({ type: 'progress', stage, pct: 0.65 + pct * 0.3 }),
-      });
-      if (pkg) {
-        effGap = g;
-        pkg.warnings.push(`the master-scaled ${gap} mm silicone gap could not extract this shape (undercuts don't shrink with the master) — generated at a ${g} mm gap; the frame is proportionally deeper than the master`);
-        break;
-      }
-    }
-  }
 
-  if (!pkg) {
-    // all ranked axes failed — send trap-region data for the failure overlay (T003)
-    const bestAxis = state.report.bestAxis;
+  if (!plan.ok) {
+    // all candidates failed — send trap-region data for the failure overlay (T003)
+    const bestAxis = plan.bestAxis ?? state.report.bestAxis;
     const trap = trappedColumnMask(state.analysis, bestAxis, 64);
     const u3 = (AXES.indexOf(bestAxis) + 1) % 3, v3 = (AXES.indexOf(bestAxis) + 2) % 3;
     const nV = state.analysis.vertProperties.length / 3;
@@ -273,54 +249,27 @@ async function generate(params: GenerateParams): Promise<void> {
       if (trap.mask[iv * trap.grid + iu]) flags[i] = 1;
     }
     post({ type: 'failure', axis: bestAxis, trappedPct: state.report.axes[0].trappedPct,
-      message: params.panels === 3
-        ? 'No extractable 3-piece split — the sub-panels fragment into disconnected pieces on this shape at these settings. Try a smaller silicone gap (the sub-panels stay connected at gap ≤ ~6 on this model) or keep the 2-piece jacket with painted supports.'
-        : 'No candidate axis produced an extractable 2-piece mold — the highlighted regions trap the jacket on every candidate axis',
+      message: plan.message + (params.panels === 3
+        ? ' — the sub-panels may fragment into disconnected pieces on this shape at these settings.'
+        : ' — the highlighted regions trap the jacket on every candidate axis'),
       trapFlags: flags }, [flags.buffer]);
     return;
   }
+  const pkg = plan.pkg;
+  const effGap = plan.gapEff;
+  const is3 = pkg.panels === 3;
+  // The planner already built + final-audited the actual package bytes — the
+  // export click below just transfers them (identical to the CLI's package).
+  state.lastPlan = plan;
 
-  post({ type: 'progress', stage: 'Running validation gates', pct: 0.96 });
-  const is3 = !!pkg.pieces.jacketB1 && !!pkg.pieces.jacketB2;
-  const gateReport = runGates({
-    grid, gap: effGap, wall, step: grid.step,
-    frame: pkg.frame,
-    ports: pkg.ports,
-    master,
-    pieceArrays: is3
-      ? [pkg.pieces.jacketA, pkg.pieces.jacketB1!, pkg.pieces.jacketB2!, pkg.pieces.basePlate]
-      : [pkg.pieces.jacketA, pkg.pieces.jacketB, pkg.pieces.basePlate],
-    siliconeMl: pkg.siliconeMl,
-    cavityLoops: pkg.cavityLoops, cavitySections: pkg.cavitySections,
-    gapWindow: params.gapWindow,
-  });
-
-  // Preserve the master. The slicer controls infill; sealed CAD hollows can
-  // introduce unsupported ceilings and disconnected internal surfaces.
-  const extraWarnings: string[] = [];
-  // The preliminary ray analysis only ranks candidates; the final rigid-jacket
-  // extraction simulation is authoritative. Explain the downgrade instead of
-  // letting the axis change look like a bug (reliability brief §6).
-  if (pkg.axis !== state.report.bestAxis) {
-    extraWarnings.push(`${state.report.bestAxis} was the best preliminary pull axis, but it failed the final rigid-jacket extraction test — ${pkg.axis} was selected as the first extractable split`);
-  }
   // Connectivity is not an air-trap solver: with no vents and a big or
   // undercuts-heavy pour, flag local high points for manual review (brief §7).
+  const extraWarnings: string[] = [];
   if (pkg.ports.vents.length === 0 && (pkg.siliconeMl > 150 || trappedPct > 10)) {
     extraWarnings.push('No automatic air vents were generated. Review local high points before the production pour.');
   }
   const masterFinal = master;
-
-  // master_base = (hollowed) doll ∪ fused base plate — V0.2 architecture
-  let masterBaseArr = masterFinal;
-  try {
-    const mm = new m.Manifold(new m.Mesh({ numProp: 3, vertProperties: masterFinal.vertProperties, triVerts: masterFinal.triVerts }));
-    const pm = new m.Manifold(new m.Mesh({ numProp: 3, vertProperties: pkg.pieces.basePlate.vertProperties, triVerts: pkg.pieces.basePlate.triVerts }));
-    const fused = mm.add(pm);
-    if (!isStatusOk(fused)) throw new Error('Master/base union failed');
-    masterBaseArr = instanceToMeshArrays(fused);
-    fused.delete(); pm.delete(); mm.delete();
-  } catch { throw new Error('Could not fuse the master to its base plate'); }
+  const masterBaseArr = plan.masterBase;
 
   const result: GenerateResult = {
     parts: {
@@ -340,20 +289,19 @@ async function generate(params: GenerateParams): Promise<void> {
       ...(is3 ? { B1: pkg.extraction.B1?.freeAtMm ?? 0, B2: pkg.extraction.B2?.freeAtMm ?? 0 } : {}),
     },
     panels: pkg.panels,
-    warnings: [...extraWarnings, ...gateReport.warnings, ...pkg.warnings, ...state.report.warnings],
-    checks: gateReport.checks,
-    gatesPass: gateReport.pass,
+    warnings: [...extraWarnings, ...plan.warnings],
+    checks: plan.checks,
+    gatesPass: plan.checks.every((c) => c.pass || !c.hard),
     ports: { crown: null, vents: pkg.ports.vents.length },
-    clearanceBand: gateReport.clearanceBand,
-    printability: analyzePieces({
-      mod: m, masterBase: masterBaseArr,
-      jackets: is3
-        ? [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B1', mesh: pkg.pieces.jacketB1! }, { name: 'jacket_B2', mesh: pkg.pieces.jacketB2! }]
-        : [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B', mesh: pkg.pieces.jacketB }],
-      vert: pkg.frame.vert, base: pkg.frame.base, crown: pkg.frame.crown,
-      plateT: pkg.plateT,
-    }),
+    clearanceBand: plan.clearanceBand,
+    printability: plan.printability,
     frame: { vert: pkg.frame.vert, base: pkg.frame.base, plateT: pkg.plateT },
+    // shared-planner metadata (Task 4): export writes the same project.json as the CLI
+    method: plan.method,
+    source: plan.source,
+    transforms: plan.transforms,
+    releaseResult: plan.release,
+    rejectionLedger: plan.rejectionLedger,
   };
   // SIZE FEATURE: per-part volume of everything the user actually prints (mass
   // estimates in the size panel); preview-only parts excluded
@@ -373,6 +321,15 @@ async function exportPackage(): Promise<void> {
   if (!state || !state.lastResult) throw new Error('Generate a mold first');
   const r = state.lastResult;
   if (!r.gatesPass) throw new Error('Validation gates failed — fix the failed checks before exporting');
+  // The shared planner already built and final-audited the package during
+  // generate — the download is the exact bytes whose audit ships in
+  // project.json (no second cleanup pass, no drift between shown and shipped).
+  if (state.lastPlan?.ok) {
+    const { zip, fileName } = state.lastPlan.files;
+    const blob = zip.buffer.slice(zip.byteOffset, zip.byteOffset + zip.byteLength) as ArrayBuffer;
+    post({ type: 'export', blob, fileName }, [blob]);
+    return;
+  }
   const m = await ensureMod();
 
   const bb = (m: MeshArrays) => {
@@ -396,14 +353,21 @@ async function exportPackage(): Promise<void> {
       axis: r.axis,
       siliconeMl: r.siliconeMl,
       extraction: r.extraction,
+      // same-generation diagnostics: project.json / assembly.md /
+      // print_profile.json must reflect exactly what the user was shown —
+      // including the shared-planner metadata (method/source/transforms/
+      // release/ledger) that makes the browser package identical to the CLI's
+      method: r.method,
+      source: r.source,
+      transforms: r.transforms as never,
+      release: r.releaseResult as never,
+      rejectionLedger: r.rejectionLedger,
       jacketDim: [...r.outerDim],
       plateDim: [...bb(r.parts.basePlate)],
       warnings: r.warnings,
       checks: r.checks,
       crown: r.ports.crown,
       ventCount: r.ports.vents,
-      // same-generation diagnostics: project.json / assembly.md /
-      // print_profile.json must reflect exactly what the user was shown
       clearanceBand: r.clearanceBand,
       printability: r.printability,
       frame: r.frame,

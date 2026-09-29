@@ -103,6 +103,14 @@ export interface GenerateResult {
   frame?: { vert: Axis; base: number; plateT: number }; // mold orientation for the
                          // viewer: base plate ⊥ `vert` with its top plane at `base`;
                          // plateT = scaled plate thickness (plate bottom = base − plateT)
+  // Shared-planner metadata (Task 4): travels with the result so the export
+  // stage writes the same project.json the CLI writes. releaseResult reaches
+  // project.json via export info; method/source/transforms/ledger passed 1:1.
+  method?: { family: string; panels: number; splitAxis: string; confidence: string; note: string };
+  source?: { inputSha256: string; sourceKind: 'file' | 'mesh'; units: 'mm'; scalePolicy: string; engineCommit: string };
+  transforms?: { moldVertical: Axis; pourAxis: Axis; asExported: boolean; rotateAbout: 'X' | 'Y' | null; degrees: number | null; instruction: string; frame: unknown };
+  releaseResult?: { rigid: { part: string; direction: string; pass: boolean; freeAtMm: number; obstacle?: string }[]; siliconeDemold: { status: string; note: string } };
+  rejectionLedger?: { candidate: string; stage: "construction" | "release" | "gate" | "export"; reason: string }[];
 }
 
 // ---- worker protocol ----

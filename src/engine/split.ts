@@ -867,9 +867,9 @@ export interface SiliconeDemold {
   note: string;
 }
 
-const extractionPass = (e: { A: ExtractionResult; B: ExtractionResult | null; B1?: ExtractionResult | null; B2?: ExtractionResult | null }): boolean =>
+export const extractionPass = (e: { A: ExtractionResult; B: ExtractionResult | null; B1?: ExtractionResult | null; B2?: ExtractionResult | null }): boolean =>
   e.A.pass && (e.B ? e.B.pass : (e.B1?.pass ?? false) && (e.B2?.pass ?? false));
-const extractionFailText = (e: { A: ExtractionResult; B: ExtractionResult | null; B1?: ExtractionResult | null; B2?: ExtractionResult | null }): string => {
+export const extractionFailText = (e: { A: ExtractionResult; B: ExtractionResult | null; B1?: ExtractionResult | null; B2?: ExtractionResult | null }): string => {
   const part = (name: string, r: ExtractionResult | null | undefined): string =>
     r ? `${name} ${r.pass ? '✓' : '✗'}@${r.freeAtMm}mm${!r.pass && r.obstacle ? `→${r.obstacle}` : ''}` : `${name} —`;
   return `extraction failed (${part('A', e.A)}, ${part('B', e.B)}, ${part('B1', e.B1)}, ${part('B2', e.B2)})`;

@@ -6,6 +6,7 @@ import { zipSync, type Zippable } from 'fflate';
 import { writeStlBinary } from './stl';
 import { cleanExportMesh, type MeshAudit } from './clean';
 import { auditSerializedStl, type FinalFileAudit } from './finalAudit';
+import type { PlanSource, RejectionEntry, TransformReport } from './planner';
 import type { ManifoldMod } from './manifoldLoader';
 import type { Axis, GenerateParams, MeshArrays } from './types';
 
@@ -22,6 +23,10 @@ export interface PackageInfo {
   siliconeMl: number;
   extraction: { A: number; B: number };
   release?: ReleaseReport;   // staged rigid-release outcome + separate silicone demold status
+  method?: { family: string; panels: number; splitAxis: string; confidence: string; note: string };
+  source?: PlanSource;       // input identity + units + scale policy + engine commit
+  transforms?: TransformReport; // printer orientation derived from the mold frame
+  rejectionLedger?: RejectionEntry[]; // every rejected candidate and its stage/reason
   jacketDim: number[];
   plateDim: number[];
   warnings: string[];
@@ -175,6 +180,10 @@ export function buildPrintFiles(deps: {
     name: info.name,
     createdAt: info.createdAt,
     params: info.params,
+    method: info.method ?? null,
+    source: info.source ?? null,
+    transforms: info.transforms ?? null,
+    rejectionLedger: info.rejectionLedger ?? [],
     splitAxis: info.axis,
     siliconeMl: Number(info.siliconeMl.toFixed(1)),
     recommendedPrep: Number((info.siliconeMl * 1.1).toFixed(1)),

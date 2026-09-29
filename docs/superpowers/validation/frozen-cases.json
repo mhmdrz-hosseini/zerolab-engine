@@ -22,7 +22,8 @@
     "Reference obj_1_Molde_mano_de_Fatima.stl (repo root, 3.56M tris) is design evidence for the relief-tray family, suspected prebuilt negative — excluded from the run matrix.",
     "methodExpected values come from audit §4 and are routing TARGETS: routingEnforced=false until the method selector (M1) ships; the harness reports delivered vs expected routing without failing on it until then.",
     "Units: STL has no embedded unit standard; sizeMm means the largest bounding dimension after explicit confirmation — batch runs pass --size 50 / --size 200.",
-    "expectedOutcomeClass updates land in the SAME reviewable change as the acceptance-behavior change they reflect (see acceptanceChangeNote fields); frozenObserved is never edited."
+    "expectedOutcomeClass updates land in the SAME reviewable change as the acceptance-behavior change they reflect (see acceptanceChangeNote fields); frozenObserved is never edited.",
+    "2026-09-29 (Task 4): the production-ready metadata contract is enforced end-to-end — method, source (inputSha256/units/scale/engine commit), transforms (structured printer orientation), finalFileAudit (serialized-bytes verdicts), releaseResult (staged rigid release + separate siliconeDemold) and rejectionLedger ship in every package from the shared planner (CLI and browser worker call the same planMold). The 29 exported cases flip exported_metadata_incomplete → production_ready. This certifies the DIGITAL contract only; physical qualification (M3) remains an explicit unverified stage."
   ],
   "cases": [
     {
@@ -59,7 +60,7 @@
       "requiredSurfaces": "all_sides",
       "castingIntentNote": "Upright egg/bunny with delicate ears; mount base and evaluate silicone seam.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -105,7 +106,7 @@
       "requiredSurfaces": "all_sides",
       "castingIntentNote": "Upright figure, beard/hat undercuts. Source units are NOT mm (2.455-unit source) — explicit size confirmation is essential.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -174,7 +175,7 @@
       "requiredSurfaces": "inner_and_outer",
       "castingIntentNote": "Cat attached to a cup. Core/void and multi-body analysis needed; preserve the cup cavity and internal shells.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -197,7 +198,7 @@
       "requiredSurfaces": "inner_and_outer",
       "castingIntentNote": "Cat attached to a cup. Core/void and multi-body analysis needed; preserve the cup cavity and internal shells.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -266,7 +267,7 @@
       "requiredSurfaces": "front_only",
       "castingIntentNote": "Strong open-face plaque candidate (raised lettering + through-hole) when a flat back is acceptable; hole retention or a documented removable core is required.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -289,7 +290,7 @@
       "requiredSurfaces": "front_only",
       "castingIntentNote": "Strong open-face plaque candidate (raised lettering + through-hole) when a flat back is acceptable; hole retention or a documented removable core is required.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -312,7 +313,7 @@
       "requiredSurfaces": "inner_and_outer",
       "castingIntentNote": "Winged bowl/recess. Evaluate Z-up first, keep outer feather detail; inspect rim undercuts and silicone core release.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -335,7 +336,7 @@
       "requiredSurfaces": "inner_and_outer",
       "castingIntentNote": "Winged bowl/recess. Evaluate Z-up first, keep outer feather detail; inspect rim undercuts and silicone core release.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -358,7 +359,7 @@
       "requiredSurfaces": "all_sides",
       "castingIntentNote": "Upright figure with wings and deep detail; cut/split silicone, air paths and release strain need explicit attention.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -404,7 +405,7 @@
       "requiredSurfaces": "unspecified",
       "castingIntentNote": "Shallow tray (150×150×18) despite the name. Tray/core/backside intent must be confirmed; large master carries 39,216 pinched edges.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -450,7 +451,7 @@
       "requiredSurfaces": "all_sides",
       "castingIntentNote": "Upright sculpture; examine ears, paws, tail and multiple material/surface components.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -473,7 +474,7 @@
       "requiredSurfaces": "all_sides",
       "castingIntentNote": "Upright sculpture; examine ears, paws, tail and multiple material/surface components.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -496,7 +497,7 @@
       "requiredSurfaces": "all_sides",
       "castingIntentNote": "Upright ribbed figure is the natural initial candidate; sideways selection needs a clear benefit and opening plan.",
       "duplicateShapeGroup": "koerper",
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -519,7 +520,7 @@
       "requiredSurfaces": "all_sides",
       "castingIntentNote": "Upright ribbed figure is the natural initial candidate; sideways selection needs a clear benefit and opening plan.",
       "duplicateShapeGroup": "koerper",
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -542,7 +543,7 @@
       "requiredSurfaces": "all_sides",
       "castingIntentNote": "Upright figure; the narrow silhouette is not a relief. Protect horns, neck, legs and touching feature regions.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -565,7 +566,7 @@
       "requiredSurfaces": "all_sides",
       "castingIntentNote": "Upright figure; the narrow silhouette is not a relief. Protect horns, neck, legs and touching feature regions.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -611,7 +612,7 @@
       "requiredSurfaces": "all_sides",
       "castingIntentNote": "Low but fully 3D animal. Natural belly/base orientation plus a fur-safe silicone cut — NOT an automatic relief tray.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -659,7 +660,7 @@
       "requiredSurfaces": "all_sides",
       "castingIntentNote": "Upright figure with arm/leg gaps. Plan master release and least-visible cut path separately from the jacket split.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -682,7 +683,7 @@
       "requiredSurfaces": "all_sides",
       "castingIntentNote": "Composite gnome/candle-holder. Keep the deep recess and wide platform; the 51.32 mm P90 gap at large scale merits candidate comparison.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -705,7 +706,7 @@
       "requiredSurfaces": "all_sides",
       "castingIntentNote": "Composite gnome/candle-holder. Keep the deep recess and wide platform; the 51.32 mm P90 gap at large scale merits candidate comparison.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -753,7 +754,7 @@
       "requiredSurfaces": "all_sides",
       "castingIntentNote": "Complex 3D flowers and wrapping. Thin petals, internal air traps, detail preservation and tear strain are the main risks.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -776,7 +777,7 @@
       "requiredSurfaces": "all_sides",
       "castingIntentNote": "Same shape family as obj_1_Körper at a different source scale — the scale-invariance pair.",
       "duplicateShapeGroup": "koerper",
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -799,7 +800,7 @@
       "requiredSurfaces": "all_sides",
       "castingIntentNote": "Same shape family as obj_1_Körper at a different source scale — the scale-invariance pair.",
       "duplicateShapeGroup": "koerper",
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -822,7 +823,7 @@
       "requiredSurfaces": "front_only",
       "castingIntentNote": "Strong flat/perforated candidate (3.2 mm-thick source) with explicit flat-back intent; apertures must survive as posts/open back — never silently filled.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -845,7 +846,7 @@
       "requiredSurfaces": "front_only",
       "castingIntentNote": "Strong flat/perforated candidate (3.2 mm-thick source) with explicit flat-back intent; apertures must survive as posts/open back — never silently filled.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -868,7 +869,7 @@
       "requiredSurfaces": "all_sides",
       "castingIntentNote": "Layered flower holder with deep petal/recess features; likely cut/split silicone where petals hook.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -891,7 +892,7 @@
       "requiredSurfaces": "all_sides",
       "castingIntentNote": "Layered flower holder with deep petal/recess features; likely cut/split silicone where petals hook.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -914,7 +915,7 @@
       "requiredSurfaces": "unspecified",
       "castingIntentNote": "Leaf dish, not merely an emboss. Open-face only if its underside is not a required reproduced surface; thin leaf edges/veins need minimum-feature checks.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -937,7 +938,7 @@
       "requiredSurfaces": "unspecified",
       "castingIntentNote": "Leaf dish, not merely an emboss. Open-face only if its underside is not a required reproduced surface; thin leaf edges/veins need minimum-feature checks.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "exported_metadata_incomplete",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",

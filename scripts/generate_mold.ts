@@ -11,19 +11,16 @@
 // REFUSED unless --size <maxdim-mm> confirms the intended physical size.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { execSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { buildReport, computeBBox, validateMasterMesh } from '../src/engine/analyze';
-import { contoursAtLayer } from '../src/engine/contours';
-import { runGates } from '../src/engine/gates';
 import { isStatusOk, loadManifold } from '../src/engine/manifoldLoader';
-import { buildSignedDistanceGrid, instanceToMeshArrays } from '../src/engine/offset';
-import { AXES } from '../src/engine/types';
+import { buildSignedDistanceGrid } from '../src/engine/offset';
+import { planMold, rankSplitAxes } from '../src/engine/planner';
 import { weldMesh } from '../src/engine/weld';
 import { parseGlb } from '../src/engine/glb';
 import { parseObj } from '../src/engine/obj';
 import { parseStlBinary } from '../src/engine/stl';
-import { buildPrintFiles } from '../src/engine/export';
-import { analyzePieces } from '../src/engine/printability';
-import { generateMoldPackage, pickFrame } from '../src/engine/split';
 import type { Axis, MeshArrays } from '../src/engine/types';
 
 const args = process.argv.slice(2);
@@ -93,8 +90,10 @@ if (problems.length) {
 // --- explicit size confirmation (no silent rescaling) ---
 const bb0 = computeBBox(full);
 const maxDim = Math.max(...bb0.dim);
+let scaleK: number | null = null;
 if (SIZE !== undefined && SIZE > 0 && Math.abs(SIZE - maxDim) > 0.01) {
   const k = SIZE / maxDim;
+  scaleK = k;
   for (let i = 0; i < full.vertProperties.length; i++) full.vertProperties[i] *= k;
   warnings.push(`scaled ×${k.toFixed(4)} to a ${SIZE} mm largest dimension (--size)`);
   console.log(`${el()} scaled ×${k.toFixed(4)} (--size ${SIZE})`);
@@ -126,158 +125,47 @@ console.log(`${el()} intake: ${full.triVerts.length / 3} tris, bbox ${bb0.dim.ma
 
 // --- SDF grid + axis ranking (worker parity) ---
 const grid = await buildSignedDistanceGrid(full, { gap: GAP, wall: WALL, step: 0.75 });
-const quiet = new Map<string, number>();
-for (const a of report.axes) {
-  try {
-    const fr = pickFrame(a.axis, analysis);
-    const loops = contoursAtLayer(grid, AXES.indexOf(a.axis), fr.mid, -GAP);
-    if (loops.length === 0) continue;
-    let perim = 0, area = 0;
-    for (const loop of loops) {
-      for (let i = 0; i < loop.length; i++) {
-        const [x1, y1] = loop[i], [x2, y2] = loop[(i + 1) % loop.length];
-        perim += Math.hypot(x2 - x1, y2 - y1);
-        area += x1 * y2 - x2 * y1;
-      }
-    }
-    area = Math.abs(area) / 2;
-    if (area > 1) quiet.set(a.axis, perim / (2 * Math.sqrt(Math.PI * area)));
-  } catch { /* informational */ }
-}
-const cleanAxes = report.axes.filter((a) => a.trappedPct <= 10);
-const restAxes = report.axes.filter((a) => a.trappedPct > 10);
-const rankedAxes = SPLIT ? [SPLIT] : [
-  ...cleanAxes.sort((a, b) => (quiet.get(a.axis) ?? 99) - (quiet.get(b.axis) ?? 99)).map((a) => a.axis),
-  ...restAxes.sort((a, b) => a.trappedPct - b.trappedPct).map((a) => a.axis),
-];
+const rankedAxes = rankSplitAxes(report.axes, analysis, grid, GAP);
 console.log(`${el()} ranked axes: ${rankedAxes.join(' → ')}`);
 
-// --- generate ---
-const pkg = await generateMoldPackage({
-  mod, master: full, grid,
+// --- plan: the ONE shared pipeline (CLI, browser worker and tests) ---
+const inputSha256 = createHash('sha256').update(bytes).digest('hex');
+let engineCommit = 'unknown';
+try { engineCommit = execSync('git rev-parse HEAD').toString().trim(); } catch { /* not a git checkout */ }
+const plan = await planMold({
+  mod, master: full, grid, rankedAxes,
   params: { gap: GAP, wall: WALL, clearance: CLEARANCE, verticalAxis: VERTICAL, splitAxis: SPLIT, gapWindow: GAP_WINDOW, ribs: RIBS, material: MATERIAL, panels: PANELS },
-  rankedAxes, ports: false,
+  name: input.split(/[\\/]/).pop()!.replace(/\.[^.]+$/, ''),
+  source: {
+    inputSha256, sourceKind: 'file', units: 'mm',
+    scalePolicy: scaleK !== null
+      ? `scaled ×${scaleK.toFixed(4)} to a ${SIZE} mm largest dimension (--size)`
+      : 'unscaled — file units taken as millimetres',
+    engineCommit,
+  },
+  ports: false,
+  extraWarnings: [...warnings, ...report.warnings],
   onProgress: (stage) => console.log(`${el()} ${stage}`),
 });
-if (!pkg) {
-  console.error('generate_mold: every candidate axis failed — this shape needs the multi-panel mode (not yet available). Rejected axes:');
-  for (const f of rankedAxes) console.error(`  ±${f}`);
+if (!plan.ok) {
+  console.error(`generate_mold: ${plan.message}`);
+  for (const r of plan.rejectionLedger) console.error(`  ✗ ${r.candidate} [${r.stage}] ${r.reason.slice(0, 160)}`);
   process.exit(1);
 }
-console.log(`${el()} won axis ±${pkg.axis}; rejected: ${pkg.failedAxes.map((f) => `${f.axis} (${f.reason.slice(0, 60)})`).join('; ') || 'none'}`);
-
-// --- gates: hard failures block the package ---
-const gates = runGates({
-  grid, gap: GAP, wall: WALL, step: grid.step,
-  frame: pkg.frame,
-  ports: pkg.ports,
-  master: full,
-  pieceArrays: (pkg.pieces.jacketB1 && pkg.pieces.jacketB2)
-    ? [pkg.pieces.jacketA, pkg.pieces.jacketB1, pkg.pieces.jacketB2, pkg.pieces.basePlate]
-    : [pkg.pieces.jacketA, pkg.pieces.jacketB, pkg.pieces.basePlate],
-  siliconeMl: pkg.siliconeMl,
-  cavityLoops: pkg.cavityLoops, cavitySections: pkg.cavitySections,
-  gapWindow: GAP_WINDOW,
-});
-let failures = 0;
-for (const c of gates.checks) {
-  console.log(`${c.pass ? 'PASS' : 'FAIL'}  ${c.name}  (${c.detail})`);
-  if (!c.pass && c.hard) failures++;
-}
-if (failures > 0) {
-  console.error(`generate_mold: ${failures} hard gate failure(s) — package NOT written`);
+if (!plan.files) {
+  console.error('generate_mold: internal error — plan succeeded without export files');
   process.exit(1);
 }
-
-// --- master_base fusion (worker parity) ---
-const mm = new mod.Manifold(new mod.Mesh({ numProp: 3, vertProperties: full.vertProperties, triVerts: full.triVerts }));
-const pm = new mod.Manifold(new mod.Mesh({ numProp: 3, vertProperties: pkg.pieces.basePlate.vertProperties, triVerts: pkg.pieces.basePlate.triVerts }));
-const fused = mm.add(pm);
-if (!isStatusOk(fused)) {
-  console.error('generate_mold: master/base union failed — package NOT written');
-  process.exit(1);
-}
-const masterBase = instanceToMeshArrays(fused);
-fused.delete(); pm.delete(); mm.delete();
-
-// --- printability analyzer (audit §7): per-part 45° overhang forecast ---
+const { pkg } = plan;
+const { files, zip, fileName } = plan.files;
+console.log(`${el()} method ${plan.method.family} (${plan.method.panels}-piece, split ±${pkg.axis}); rejected: ${plan.rejectionLedger.length === 0 ? 'none' : plan.rejectionLedger.map((r) => `${r.candidate} (${r.reason.slice(0, 60)})`).join('; ')}`);
+for (const c of plan.checks) console.log(`${c.pass ? 'PASS' : 'FAIL'}  ${c.name}  (${c.detail})`);
 console.log(`${el()} printability forecast…`);
-const is3pc = !!(pkg.pieces.jacketB1 && pkg.pieces.jacketB2);
-const printability = analyzePieces({
-  mod, masterBase,
-  jackets: is3pc
-    ? [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B1', mesh: pkg.pieces.jacketB1! }, { name: 'jacket_B2', mesh: pkg.pieces.jacketB2! }]
-    : [{ name: 'jacket_A', mesh: pkg.pieces.jacketA }, { name: 'jacket_B', mesh: pkg.pieces.jacketB! }],
-  vert: pkg.frame.vert, base: pkg.frame.base, crown: pkg.frame.crown, plateT: pkg.plateT,
-});
-for (const [name, r] of Object.entries(printability)) {
+for (const [name, r] of Object.entries(plan.printability)) {
   console.log(`  ${name}: bed ${r.bedAreaMm2} mm² · unsupported @45° ${r.overhangAreaMm2} mm²` +
     (r.worstBands.length ? ` · worst ${r.worstBands[0].areaMm2} mm² @ ${r.worstBands[0].zLo}–${r.worstBands[0].zHi} mm` : ''));
 }
 
-// --- staged rigid-release report (plan Task 2): per-part outcome; silicone
-// demold is carried separately and never implied by a rigid pass ---
-const rigidStep = (part: string, direction: string, r: { pass: boolean; freeAtMm: number; obstacle?: string } | null | undefined) => ({
-  part, direction,
-  pass: !!r?.pass, freeAtMm: r?.freeAtMm ?? 0,
-  ...(!r?.pass && r?.obstacle ? { obstacle: r.obstacle } : {}),
-});
-const is3pcPkg = !!(pkg.pieces.jacketB1 && pkg.pieces.jacketB2);
-const release = {
-  rigid: [
-    rigidStep('jacket_A', `slide ±${pkg.axis}`, pkg.extraction.A),
-    ...(is3pcPkg
-      ? [rigidStep('jacket_B1', `slide ±${pkg.frame.depth}`, pkg.extraction.B1),
-         rigidStep('jacket_B2', `slide ±${pkg.frame.depth}`, pkg.extraction.B2)]
-      : [rigidStep('jacket_B', `slide ±${pkg.axis}`, pkg.extraction.B)]),
-  ],
-  siliconeDemold: pkg.siliconeDemold,
-};
-
-// --- package ---
-const bbOf = (m: MeshArrays) => {
-  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
-  for (let i = 0; i < m.vertProperties.length / 3; i++)
-    for (let k = 0; k < 3; k++) {
-      const x = m.vertProperties[i * 3 + k];
-      if (x < min[k]) min[k] = x;
-      if (x > max[k]) max[k] = x;
-    }
-  return [max[0] - min[0], max[1] - min[1], max[2] - min[2]] as number[];
-};
-let files: Record<string, Uint8Array>, zip: Uint8Array, fileName: string;
-try {
-  ({ files, zip, fileName } = buildPrintFiles({
-    mod,
-    masterBase,
-    parts: { ...pkg.pieces, siliconeSkin: pkg.pieces.skin, master: full, masterBase },
-    info: {
-      name: input.split(/[\\/]/).pop()!.replace(/\.[^.]+$/, ''),
-      createdAt: new Date().toISOString(),
-      params: { gap: GAP, wall: WALL, clearance: CLEARANCE, gapWindow: GAP_WINDOW, ribs: RIBS, material: MATERIAL, panels: PANELS },
-      axis: pkg.axis,
-      release,
-      siliconeMl: pkg.siliconeMl,
-      extraction: {
-        A: pkg.extraction.A.freeAtMm,
-        B: pkg.extraction.B?.freeAtMm ?? 0,
-        ...(pkg.pieces.jacketB1 ? { B1: pkg.extraction.B1?.freeAtMm ?? 0, B2: pkg.extraction.B2?.freeAtMm ?? 0 } : {}),
-      },
-      jacketDim: [...pkg.jacketDim],
-      plateDim: [...bbOf(pkg.pieces.basePlate)],
-      warnings: [...gates.warnings, ...pkg.warnings, ...warnings, ...report.warnings],
-      checks: gates.checks,
-      crown: null,
-      ventCount: pkg.ports.vents.length,
-      clearanceBand: gates.clearanceBand,
-      printability,
-      frame: { vert: pkg.frame.vert, base: pkg.frame.base, plateT: pkg.plateT },
-    },
-  }));
-} catch (err) {
-  console.error(`generate_mold: ${err instanceof Error ? err.message : err}`);
-  process.exit(1);
-}
 mkdirSync(OUT_DIR, { recursive: true });
 for (const [path, data] of Object.entries(files)) {
   const p = `${OUT_DIR}/${path}`;

@@ -75,6 +75,36 @@ Harness re-checks: japandi → `intake_rejected` ✓; Spiderman-large and rose-l
 equivalence ✓ (class, axis, silicone ±2%). Remaining red: the other five production-ready contract
 fields (`method`, `source`, `transforms`, `finalFileAudit`, `rejectionLedger`) — Tasks 3 and 4.
 
+## Task 3 — final-file audit on serialized bytes
+
+Engine changes (`src/engine/finalAudit.ts` new, `src/engine/export.ts`):
+
+- Every part is judged on its **actual serialized STL bytes**: write → parse back → classify →
+  kernel round-trip. Verdicts: `valid`, `suspect` (closed but pinched — ships with recorded
+  reasons), `invalid` (boundary edges, non-manifold, degenerate survivors, zero-volume components,
+  or kernel reconstruction failure — blocks the package like the pre-serialization gate).
+- Classifications per the plan's contract: `closed_surface`, `two_manifold`, `nested_void_shells`,
+  net signed volume (void shells subtract), separate kernel volume for agreement checking.
+- `finalFileAudit` is written into `project.json` per file; the silicone mix claim is cross-checked
+  against the serialized skin (>2% divergence records a visible warning — the 1,134.5 vs 1,141.6 mL
+  cap discrepancy class is now surfaced, not hidden).
+
+Audit reconciliation (probed, not assumed): the frozen angel-large `master_base.stl` that the
+independent audit could not import **reconstructs cleanly under manifold-3d 3.5.3** (NoError,
+366.4 cm³) — it is closed with 45 pinched edges → classified `suspect`, not `invalid`. The audit's
+rejection is not reproduced on the single part; recorded in `regression_final_mesh.ts` case 6
+instead of being papered over.
+
+New test: `scripts/regression_final_mesh.ts` — zero-thickness sheet → invalid; open boundary →
+invalid; hollow solid → valid with net 7.0 cm³ and one void shell; detached positives → valid
+(2.0 cm³, 2 components); pinched edge-contact → suspect; frozen angel master → suspect/kernel-OK.
+
+Verification: `tsc` clean, build pass, `regression_mold` pass, `smoke:reliability` pass, harness
+shows `finalFileAudit` + `releaseResult` present in real packages (Körper small: all four files
+`valid` with kernel volumes agreeing; Montagem small: master + skin `suspect` at 18 pinched edges,
+shipping with warnings). Remaining contract violations: `method`, `source`, `transforms`,
+`rejectionLedger` — Task 4 scope.
+
 ## Open (not yet implemented)
 
 Per the plan status file: open-face relief tray + method selector (M1), strict final-STL

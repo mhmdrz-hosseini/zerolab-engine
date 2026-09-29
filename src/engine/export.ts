@@ -5,6 +5,7 @@
 import { zipSync, type Zippable } from 'fflate';
 import { writeStlBinary } from './stl';
 import { cleanExportMesh, type MeshAudit } from './clean';
+import { auditSerializedStl, type FinalFileAudit } from './finalAudit';
 import type { ManifoldMod } from './manifoldLoader';
 import type { Axis, GenerateParams, MeshArrays } from './types';
 
@@ -130,6 +131,31 @@ export function buildPrintFiles(deps: {
     throw new Error(`Export mesh gate failed — package NOT written. ${gateFailures.join(' · ')}`);
   }
 
+  // Final-file audit (plan Task 3): re-check every part on its ACTUAL
+  // serialized bytes — parse back, classify topology, verify the kernel can
+  // rebuild the solid. An invalid verdict blocks the package exactly like the
+  // pre-serialization gate; suspects (pinched edges) ship with recorded reasons.
+  const finalFileAudit: Record<string, FinalFileAudit> = {};
+  const finalFailures: string[] = [];
+  for (const p of partDefs) {
+    const fa = auditSerializedStl(p.file, p.mesh, deps.mod);
+    finalFileAudit[p.file] = fa;
+    if (fa.verdict === 'invalid') finalFailures.push(`${p.file}: ${fa.reasons.join('; ')}`);
+    if (fa.verdict === 'suspect') info.warnings = [...info.warnings, `${p.file}: ${fa.reasons.join('; ')}`];
+  }
+  if (finalFailures.length > 0) {
+    throw new Error(`Final-file audit failed — package NOT written. ${finalFailures.join(' · ')}`);
+  }
+  // Silicone estimate vs final geometry: the poured volume claim must match
+  // the serialized skin within tolerance (audit: 1,134.5 vs 1,141.6 mL on the
+  // large lantern cap — investigated, never hidden).
+  if (parts.siliconeSkin) {
+    const skin = finalFileAudit['03_preview/silicone_skin.stl'];
+    if (skin && info.siliconeMl > 0 && Math.abs(skin.netVolumeCm3 * 1000 - info.siliconeMl) / info.siliconeMl > 0.02) {
+      info.warnings = [...info.warnings, `silicone estimate ${info.siliconeMl.toFixed(1)} mL vs serialized skin ${((skin.netVolumeCm3 * 1000)).toFixed(1)} mL (>2% apart — mix against the serialized volume)`];
+    }
+  }
+
   const partMeta = partDefs.map((p) => ({
     name: p.name,
     file: p.file,
@@ -164,6 +190,7 @@ export function buildPrintFiles(deps: {
     hardware: ['6–10 binder clips (25–32 mm), gripping the flat external seam rails'],
     validation: info.checks,
     meshAudit,
+    finalFileAudit,
     warnings: info.warnings,
     parts: partMeta,
   };

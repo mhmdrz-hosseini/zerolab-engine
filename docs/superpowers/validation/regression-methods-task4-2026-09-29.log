@@ -1,0 +1,163 @@
+[w0] (1/41) RUN  Bunny_Egg_Small__large
+[w0] (1/41) DONE Bunny_Egg_Small__large → production_ready (53s)
+[w0] (2/41) RUN  Bunny_Egg_Small__small
+[w0] (2/41) DONE Bunny_Egg_Small__small → production_ready (10s)
+[w0] (3/41) RUN  cutegnome_(1)__large
+[w0] (3/41) DONE cutegnome_(1)__large → rejected/unknown (13s)
+[w0] (4/41) RUN  cutegnome_(1)__small
+[w0] (4/41) DONE cutegnome_(1)__small → production_ready (10s)
+[w0] (5/41) RUN  japandi_hart_klein__large
+[w0] (5/41) DONE japandi_hart_klein__large → intake_rejected/intake (2s)
+[w0] (6/41) RUN  japandi_hart_klein__small
+[w0] (6/41) DONE japandi_hart_klein__small → intake_rejected/intake (2s)
+[w0] (7/41) RUN  kittie__large
+[w0] (7/41) DONE kittie__large → production_ready (51s)
+[w0] (8/41) RUN  kittie__small
+[w0] (8/41) DONE kittie__small → production_ready (21s)
+[w0] (9/41) RUN  Medium__large
+[w0] (9/41) DONE Medium__large → rejected/export (877s)
+[w0] (10/41) RUN  Medium__small
+[w0] (10/41) DONE Medium__small → production_ready (69s)
+[w0] (11/41) RUN  Montagem_flat__large
+[w0] (11/41) DONE Montagem_flat__large → production_ready (9s)
+[w0] (12/41) RUN  Montagem_flat__small
+[w0] (12/41) DONE Montagem_flat__small → production_ready (3s)
+[w0] (13/41) RUN  obj_1_Candle_lamp__large
+[w0] (13/41) DONE obj_1_Candle_lamp__large → production_ready (129s)
+[w0] (14/41) RUN  obj_1_Candle_lamp__small
+[w0] (14/41) DONE obj_1_Candle_lamp__small → production_ready (16s)
+[w0] (15/41) RUN  obj_1_christmas_angel2__large
+[w0] (15/41) DONE obj_1_christmas_angel2__large → production_ready (155s)
+[w0] (16/41) RUN  obj_1_christmas_angel2__small
+[w0] (16/41) DONE obj_1_christmas_angel2__small → rejected/export (120s)
+[w0] (17/41) RUN  obj_1_Entwurf_einer_Vase.3mf__large
+[w0] (17/41) DONE obj_1_Entwurf_einer_Vase.3mf__large → production_ready (82s)
+[w0] (18/41) RUN  obj_1_Entwurf_einer_Vase.3mf__small
+[w0] (18/41) DONE obj_1_Entwurf_einer_Vase.3mf__small → production_ready (117s)
+[w0] (19/41) RUN  obj_1_Kitten__large
+[w0] (19/41) DONE obj_1_Kitten__large → production_ready (124s)
+[w0] (20/41) RUN  obj_1_Kitten__small
+[w0] (20/41) DONE obj_1_Kitten__small → production_ready (22s)
+[w0] (21/41) RUN  obj_1_Körper__large
+[w0] (21/41) DONE obj_1_Körper__large → production_ready (38s)
+[w0] (22/41) RUN  obj_1_Körper__small
+[w0] (22/41) DONE obj_1_Körper__small → production_ready (10s)
+[w0] (23/41) RUN  obj_1_Minimalist_Giraffe_figurine-2__large
+[w0] (23/41) DONE obj_1_Minimalist_Giraffe_figurine-2__large → production_ready (25s)
+[w0] (24/41) RUN  obj_1_Minimalist_Giraffe_figurine-2__small
+[w0] (24/41) DONE obj_1_Minimalist_Giraffe_figurine-2__small → production_ready (8s)
+[w0] (25/41) RUN  obj_1_sleepy_poodle__large
+[w0] (25/41) DONE obj_1_sleepy_poodle__large → rejected/unknown (47s)
+[w0] (26/41) RUN  obj_1_sleepy_poodle__small
+[w0] (26/41) DONE obj_1_sleepy_poodle__small → production_ready (22s)
+[w0] (27/41) RUN  obj_1_Spiderman_urban__large
+[w0] (27/41) DONE obj_1_Spiderman_urban__large → rejected/unknown (135s)
+[w0] (28/41) RUN  obj_1_Spiderman_urban__small
+[w0] (28/41) DONE obj_1_Spiderman_urban__small → production_ready (7s)
+[w0] (29/41) RUN  obj_1_Wichtel6__large
+[w0] (29/41) DONE obj_1_Wichtel6__large → production_ready (200s)
+[w0] (30/41) RUN  obj_1_Wichtel6__small
+[w0] (30/41) DONE obj_1_Wichtel6__small → production_ready (31s)
+[w0] (31/41) RUN  obj_1_情人节玫瑰花束摆件__large
+[w0] (31/41) DONE obj_1_情人节玫瑰花束摆件__large → rejected/unknown (540s)
+[w0] (32/41) RUN  obj_1_情人节玫瑰花束摆件__small
+[w0] (32/41) DONE obj_1_情人节玫瑰花束摆件__small → production_ready (65s)
+[w0] (33/41) RUN  obj_2_Körper__large
+[w0] (33/41) DONE obj_2_Körper__large → production_ready (30s)
+[w0] (34/41) RUN  obj_2_Körper__small
+[w0] (34/41) DONE obj_2_Körper__small → production_ready (9s)
+[w0] (35/41) RUN  obj_2_latern_cap__large
+[w0] (35/41) DONE obj_2_latern_cap__large → production_ready (15s)
+[w0] (36/41) RUN  obj_2_latern_cap__small
+[w0] (36/41) DONE obj_2_latern_cap__small → production_ready (3s)
+[w0] (37/41) RUN  rose_teelicht_mw_fertig__large
+[w0] (37/41) DONE rose_teelicht_mw_fertig__large → production_ready (258s)
+[w0] (38/41) RUN  rose_teelicht_mw_fertig__small
+[w0] (38/41) DONE rose_teelicht_mw_fertig__small → production_ready (51s)
+[w0] (39/41) RUN  tackaliscSTL__large
+[w0] (39/41) DONE tackaliscSTL__large → rejected/unknown (547s)
+[w0] (40/41) RUN  tackaliscSTL__small
+[w0] (40/41) DONE tackaliscSTL__small → production_ready (47s)
+[w0] (41/41) RUN  christmas+tree+MEDIUM.step
+[w0] (41/41) DONE christmas+tree+MEDIUM.step → needs_input/intake (0s)
+
+FAIL  Bunny_Egg_Small__large  (production_ready — class production_ready ≠ expected rejected)
+INFO drift vs frozen: Bunny_Egg_Small__large — class rejected→production_ready
+PASS  Bunny_Egg_Small__small  (production_ready)
+INFO drift vs frozen: Bunny_Egg_Small__small — class exported→production_ready
+PASS  cutegnome_(1)__large  (rejected/unknown)
+PASS  cutegnome_(1)__small  (production_ready)
+INFO drift vs frozen: cutegnome_(1)__small — class exported→production_ready
+PASS  japandi_hart_klein__large  (intake_rejected/intake)
+PASS  japandi_hart_klein__small  (intake_rejected/intake)
+PASS  kittie__large  (production_ready)
+INFO drift vs frozen: kittie__large — class exported→production_ready; axis ±Y→±X
+PASS  kittie__small  (production_ready)
+INFO drift vs frozen: kittie__small — class exported→production_ready; axis ±Z→±X; silicone 111.6→141.5 mL
+PASS  Medium__large  (rejected/export)
+FAIL  Medium__small  (production_ready — class production_ready ≠ expected rejected)
+INFO drift vs frozen: Medium__small — class rejected→production_ready
+PASS  Montagem_flat__large  (production_ready)
+INFO drift vs frozen: Montagem_flat__large — class exported→production_ready
+PASS  Montagem_flat__small  (production_ready)
+INFO drift vs frozen: Montagem_flat__small — class exported→production_ready
+PASS  obj_1_Candle_lamp__large  (production_ready)
+INFO drift vs frozen: obj_1_Candle_lamp__large — class exported→production_ready; axis ±Z→±Y; silicone 1986.2→2138.4 mL
+PASS  obj_1_Candle_lamp__small  (production_ready)
+INFO drift vs frozen: obj_1_Candle_lamp__small — class exported→production_ready
+PASS  obj_1_christmas_angel2__large  (production_ready)
+INFO drift vs frozen: obj_1_christmas_angel2__large — class exported→production_ready; axis ±Y→±X
+PASS  obj_1_christmas_angel2__small  (rejected/export)
+PASS  obj_1_Entwurf_einer_Vase.3mf__large  (production_ready)
+INFO drift vs frozen: obj_1_Entwurf_einer_Vase.3mf__large — class exported→production_ready
+FAIL  obj_1_Entwurf_einer_Vase.3mf__small  (production_ready — class production_ready ≠ expected rejected)
+INFO drift vs frozen: obj_1_Entwurf_einer_Vase.3mf__small — class rejected→production_ready
+PASS  obj_1_Kitten__large  (production_ready)
+INFO drift vs frozen: obj_1_Kitten__large — class exported→production_ready
+PASS  obj_1_Kitten__small  (production_ready)
+INFO drift vs frozen: obj_1_Kitten__small — class exported→production_ready
+PASS  obj_1_Körper__large  (production_ready)
+INFO drift vs frozen: obj_1_Körper__large — class exported→production_ready
+PASS  obj_1_Körper__small  (production_ready)
+INFO drift vs frozen: obj_1_Körper__small — class exported→production_ready
+PASS  obj_1_Minimalist_Giraffe_figurine-2__large  (production_ready)
+INFO drift vs frozen: obj_1_Minimalist_Giraffe_figurine-2__large — class exported→production_ready
+PASS  obj_1_Minimalist_Giraffe_figurine-2__small  (production_ready)
+INFO drift vs frozen: obj_1_Minimalist_Giraffe_figurine-2__small — class exported→production_ready
+PASS  obj_1_sleepy_poodle__large  (rejected/unknown)
+PASS  obj_1_sleepy_poodle__small  (production_ready)
+INFO drift vs frozen: obj_1_sleepy_poodle__small — class exported→production_ready
+PASS  obj_1_Spiderman_urban__large  (rejected/unknown)
+INFO drift vs frozen: obj_1_Spiderman_urban__large — class exported→rejected
+PASS  obj_1_Spiderman_urban__small  (production_ready)
+INFO drift vs frozen: obj_1_Spiderman_urban__small — class exported→production_ready
+PASS  obj_1_Wichtel6__large  (production_ready)
+INFO drift vs frozen: obj_1_Wichtel6__large — class exported→production_ready
+PASS  obj_1_Wichtel6__small  (production_ready)
+INFO drift vs frozen: obj_1_Wichtel6__small — class exported→production_ready
+PASS  obj_1_情人节玫瑰花束摆件__large  (rejected/unknown)
+INFO drift vs frozen: obj_1_情人节玫瑰花束摆件__large — class exported→rejected
+PASS  obj_1_情人节玫瑰花束摆件__small  (production_ready)
+INFO drift vs frozen: obj_1_情人节玫瑰花束摆件__small — class exported→production_ready
+PASS  obj_2_Körper__large  (production_ready)
+INFO drift vs frozen: obj_2_Körper__large — class exported→production_ready
+PASS  obj_2_Körper__small  (production_ready)
+INFO drift vs frozen: obj_2_Körper__small — class exported→production_ready
+PASS  obj_2_latern_cap__large  (production_ready)
+INFO drift vs frozen: obj_2_latern_cap__large — class exported→production_ready; axis ±Z→±Y; silicone 1134.5→733.1 mL
+PASS  obj_2_latern_cap__small  (production_ready)
+INFO drift vs frozen: obj_2_latern_cap__small — class exported→production_ready
+PASS  rose_teelicht_mw_fertig__large  (production_ready)
+INFO drift vs frozen: rose_teelicht_mw_fertig__large — class exported→production_ready; axis ±Z→±Y; silicone 1400.7→1910.9 mL
+PASS  rose_teelicht_mw_fertig__small  (production_ready)
+INFO drift vs frozen: rose_teelicht_mw_fertig__small — class exported→production_ready
+FAIL  tackaliscSTL__large  (rejected/unknown — class rejected/unknown ≠ expected production_ready)
+INFO drift vs frozen: tackaliscSTL__large — class exported→rejected
+PASS  tackaliscSTL__small  (production_ready)
+INFO drift vs frozen: tackaliscSTL__small — class exported→production_ready
+PASS  christmas+tree+MEDIUM.step  (needs_input/intake)
+PASS  equivalence koerper @200mm (class, axis, silicone within 2%)
+PASS  equivalence koerper @50mm (class, axis, silicone within 2%)
+
+REGRESSION METHODS: FAIL (4 failing check(s) over 41 cases) — details in docs/superpowers/validation/last-verification.json
+EXIT=1

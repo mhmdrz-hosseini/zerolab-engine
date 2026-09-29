@@ -23,7 +23,8 @@
     "methodExpected values come from audit §4 and are routing TARGETS: routingEnforced=false until the method selector (M1) ships; the harness reports delivered vs expected routing without failing on it until then.",
     "Units: STL has no embedded unit standard; sizeMm means the largest bounding dimension after explicit confirmation — batch runs pass --size 50 / --size 200.",
     "expectedOutcomeClass updates land in the SAME reviewable change as the acceptance-behavior change they reflect (see acceptanceChangeNote fields); frozenObserved is never edited.",
-    "2026-09-29 (Task 4): the production-ready metadata contract is enforced end-to-end — method, source (inputSha256/units/scale/engine commit), transforms (structured printer orientation), finalFileAudit (serialized-bytes verdicts), releaseResult (staged rigid release + separate siliconeDemold) and rejectionLedger ship in every package from the shared planner (CLI and browser worker call the same planMold). The 29 exported cases flip exported_metadata_incomplete → production_ready. This certifies the DIGITAL contract only; physical qualification (M3) remains an explicit unverified stage."
+    "2026-09-29 (Task 4): the production-ready metadata contract is enforced end-to-end — method, source (inputSha256/units/scale/engine commit), transforms (structured printer orientation), finalFileAudit (serialized-bytes verdicts), releaseResult (staged rigid release + separate siliconeDemold) and rejectionLedger ship in every package from the shared planner (CLI and browser worker call the same planMold). The 29 exported cases flip exported_metadata_incomplete → production_ready. This certifies the DIGITAL contract only; physical qualification (M3) remains an explicit unverified stage.",
+    "2026-09-29 (Task 4 matrix): 37/41 pass. Three frozen rejections (Bunny-large, Medium-small, Vase-small) become production_ready via gate-aware candidate yield; tackalisc-large becomes a truthful rejection (master press-in under staged release). All flips carry per-case acceptanceChangeNote evidence."
   ],
   "cases": [
     {
@@ -37,7 +38,7 @@
       "requiredSurfaces": "all_sides",
       "castingIntentNote": "Upright egg/bunny with delicate ears; mount base and evaluate silicone seam.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "rejected",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -47,7 +48,8 @@
         "splitAxis": null,
         "verticalAxis": null,
         "detail": "[7.7s] Rejected ±Z: Not manifold | [14.9s] Rejected ±Y: jacket rim or clamp rails intrude into the silicone cavity | [21.9s] Rejected ±X: jacket rim or clamp rails intrude into the silicone cavity | generate_mold: every candidate axis failed — this shape needs the multi-panel mode (not yet available). Rejected axes:"
-      }
+      },
+      "acceptanceChangeNote": "Task 4 gate-aware ladder: the old single-shot pipeline rejected every axis at construction/clearance; planMold retries gaps (4→6→8) and yields per-stage, finding a feasible candidate that passes every hard gate, the staged release and the serialized-bytes final audit."
     },
     {
       "case": "Bunny_Egg_Small__small",
@@ -244,7 +246,7 @@
       "requiredSurfaces": "inner_and_outer",
       "castingIntentNote": "Hollow fluted vessel. Master/base topology and core strategy must resolve before jacket optimization.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "rejected",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -254,7 +256,8 @@
         "splitAxis": null,
         "verticalAxis": null,
         "detail": "generate_mold: Export mesh gate failed — package NOT written. 01_master/master_base.stl: not watertight (boundary 40, non-manifold 38)"
-      }
+      },
+      "acceptanceChangeNote": "Task 4 gate-aware ladder: previously the winning axis failed the export mesh gate (not-watertight master/base) and no alternative was tried; planMold yields on gate/export failure and another candidate exports clean (finalFileAudit all valid)."
     },
     {
       "case": "Montagem_flat__large",
@@ -428,7 +431,7 @@
       "requiredSurfaces": "unspecified",
       "castingIntentNote": "Shallow tray (150×150×18) despite the name. Tray/core/backside intent must be confirmed; large master carries 39,216 pinched edges.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "rejected",
+      "expectedOutcomeClass": "production_ready",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -438,7 +441,8 @@
         "splitAxis": null,
         "verticalAxis": null,
         "detail": "FAIL  Master-to-jacket clearance audit  (sampled minimum=1.06 p10=6.06 p50=7.06 p90=8.38 mm (target min ≥ 2, p10 ≥ 4.5) ⚠) | generate_mold: 1 hard gate failure(s) — package NOT written"
-      }
+      },
+      "acceptanceChangeNote": "Task 4 gate-aware ladder: previously the clearance gate failed on the winning axis and the pipeline gave up; planMold yields to the next candidate/gap, which passes the clearance audit (advisory-only hug shortfall confined to merged-offset regions)."
     },
     {
       "case": "obj_1_Kitten__large",
@@ -915,7 +919,7 @@
       "requiredSurfaces": "unspecified",
       "castingIntentNote": "Leaf dish, not merely an emboss. Open-face only if its underside is not a required reproduced surface; thin leaf edges/veins need minimum-feature checks.",
       "duplicateShapeGroup": null,
-      "expectedOutcomeClass": "production_ready",
+      "expectedOutcomeClass": "rejected",
       "routingEnforced": false,
       "frozenObserved": {
         "engineCommit": "681fdb6074a08684e97c25b19c368162063e78bd",
@@ -925,7 +929,9 @@
         "splitAxis": "X",
         "verticalAxis": "Z",
         "detail": "exported; silicone 945.5 mL; jacket 215.4 cm³"
-      }
+      },
+      "expectedFailureStage": "release",
+      "acceptanceChangeNote": "At the frozen evidence commit this case exported, but the old sim tested only master-vs-panel at final positions. Under the staged release (Task 2) every candidate fails truthfully: the 3-piece B2 presses into the MASTER at 28.05 mm (obstacle is the master, so no removal order helps) and the 3-piece sub joint is empty on ±X. Same false-pass class as Spiderman-large and rose-large."
     },
     {
       "case": "tackaliscSTL__small",

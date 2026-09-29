@@ -67,7 +67,12 @@ function resolveInput(c: FrozenCase): string {
 
 function classifyFailure(stderr: string, stdout = ''): { stage: string; detail: string } {
   const both = stdout + '\n' + stderr; // gate FAIL lines go to stdout, summaries to stderr
-  if (/every candidate axis failed/.test(stderr)) return { stage: 'construction', detail: both.trim().split('\n').filter(l => /Rejected|failed/.test(l)).slice(0, 4).join(' | ') };
+  const ledgerLines = both.split('\n').filter(l => /✗ .+\[(construction|release|gate|export)\]/.test(l));
+  if (/every candidate (axis )?failed/.test(stderr)) {
+    const last = ledgerLines[ledgerLines.length - 1];
+    const stage = last?.match(/\[(construction|release|gate|export)\]/)?.[1] ?? 'construction';
+    return { stage, detail: (ledgerLines.slice(-3).join(' | ') || stderr.trim().split('\n').slice(-1)[0]) };
+  }
   if (/Export mesh gate failed/.test(stderr)) return { stage: 'export', detail: both.trim().split('\n').slice(-1)[0] };
   if (/hard gate failure/.test(stderr)) {
     const gate = both.split('\n').find(l => /^FAIL /.test(l));

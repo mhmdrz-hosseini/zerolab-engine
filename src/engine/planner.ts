@@ -11,6 +11,7 @@
 // chooseMethod without changing this pipeline.
 import { buildMoldForAxis, extractionFailText, extractionPass, pickFrame, type AxisAttempt } from './split';
 import { classifyMethods } from './moldMethod';
+import { buildReliefTray } from './reliefTray';
 import { runGates, type GateCheck } from './gates';
 import { buildPrintFiles, type PrintFiles, type ReleaseReport } from './export';
 import { analyzePieces } from './printability';
@@ -40,9 +41,20 @@ export interface TransformReport {
 
 export type RejectionEntry = { candidate: string; stage: 'construction' | 'release' | 'gate' | 'export'; reason: string };
 
+export interface MethodReport {
+  family: string;
+  panels: number;
+  splitAxis: string;
+  confidence: string;
+  note: string;
+  selectorTop?: string;
+  selectorReason?: string;
+  selectorMeasures?: { backingPatchAreaMm2: number; backingCoverage: number; flatnessRatio: number; footprintSpanMinMm: number; footprintSpanMaxMm: number };
+}
+
 export interface PlanSuccess {
   ok: true;
-  method: { family: 'full_3d_jacket'; panels: 2 | 3; splitAxis: Axis; confidence: 'heuristic-ladder'; note: string };
+  method: MethodReport;
   source: PlanSource;
   transforms: TransformReport;
   release: ReleaseReport;
@@ -185,6 +197,84 @@ export async function planMold(req: PlanRequest): Promise<PlanSuccess | PlanFail
     panels,
     gapWindow: params.gapWindow === undefined ? undefined : Math.min(params.gapWindow, g / 2),
   });
+
+  // Tray phase (Task 6): a confirmed front-only cast whose backing plane
+  // measures flat routes to the open-face relief tray BEFORE any jacket
+  // candidate. Tray failure yields to the jacket ladder with a ledger entry.
+  const intent = req.castingIntent ?? { inputRole: 'positive_master' as const, requiredSurfaces: 'all_sides' as const };
+  if (intent.inputRole === 'positive_master' && intent.requiredSurfaces === 'front_only') {
+    const selector = classifyMethods(master, intent);
+    if (selector[0].method === 'open_face_relief') {
+      req.onProgress?.('Building the open-face relief tray', 0.7);
+      try {
+        const tray = buildReliefTray({
+          mod, master,
+          params: { gap: params.gap, wall: params.wall, plateT: 4, backing: Math.max(4, params.gap), freeboard: 5 },
+        });
+        // tray gates: printed parts are single valid solids, silicone positive
+        for (const [name, mesh] of [['tray wall', tray.pieces.wall], ['master base', tray.pieces.masterBase]] as const) {
+          const m = new mod.Manifold(new mod.Mesh({ numProp: 3, ...mesh }));
+          if (!isStatusOk(m)) throw new Error(`${name} is not a valid solid`);
+          const comps = m.decompose();
+          if (comps.length !== 1) throw new Error(`${name} has ${comps.length} disconnected components`);
+          comps.forEach((x) => x.delete());
+          m.delete();
+        }
+        const trayRelease: ReleaseReport = {
+          rigid: [{ part: 'tray wall', direction: 'lift +Z (open top)', pass: true, freeAtMm: 0 }],
+          siliconeDemold: tray.siliconeDemold,
+        };
+        const trayTransforms = transformReport(
+          { frame: { vert: 'Z', base: 0, mid: 0, crown: tray.wallTopZ, pull: 'Z', depth: 'X' }, plateT: 4, axis: 'Z', pieces: null as never, siliconeMl: tray.siliconeMl, ports: { crown: null, vents: [], vAx: 0, u3: 1, v3: 2 }, cavityLoops: [], cavitySections: [], cavity: master, warnings: [], failedAxes: [], siliconeDemold: tray.siliconeDemold, panels: 1, jacketDim: [0, 0, 0], plateDim: [0, 0, 0], extraction: { A: { pass: true, freeAtMm: 0 }, B: null } } as never,
+          tray.pieces.masterBase,
+        );
+        const trayMethod = {
+          family: 'open_face_relief', panels: 1, splitAxis: 'Z',
+          confidence: 'selector-confirmed',
+          note: `open-face relief tray: ${selector[0].reason}`,
+          selectorTop: selector[0].method,
+          selectorReason: selector[0].reason,
+          selectorMeasures: selector[0].measures,
+        } as const;
+        const wb = new mod.Manifold(new mod.Mesh({ numProp: 3, ...tray.pieces.wall })).boundingBox();
+        const trayOuterX = wb.max[0] - wb.min[0], trayOuterY = wb.max[1] - wb.min[1];
+        const trayWarnings = [...(req.extraWarnings ?? []), ...tray.warnings];
+        try {
+          const files = buildPrintFiles({
+            mod, masterBase: tray.pieces.masterBase,
+            parts: { master: master, masterBase: tray.pieces.masterBase, trayWall: tray.pieces.wall, siliconeSkin: tray.pieces.siliconeSkin },
+            info: {
+              name: req.name, createdAt: new Date().toISOString(),
+              params: { ...params, panels: 1 as 2 },
+              axis: 'Z',
+              release: trayRelease, method: trayMethod, source: req.source,
+              transforms: trayTransforms, rejectionLedger: ledger,
+              siliconeMl: tray.siliconeMl,
+              extraction: { A: 0, B: 0 },
+              jacketDim: [trayOuterX, trayOuterY, tray.wallTopZ + 4],
+              plateDim: [0, 0, 0],
+              warnings: trayWarnings,
+              checks: [{ name: 'Open-face tray construction', pass: true, hard: true, detail: `wall top ${tray.wallTopZ} mm backs master top ${tray.masterTopZ} mm; silicone ${tray.siliconeMl} mL` }],
+              crown: null, ventCount: 0,
+              frame: { vert: 'Z', base: 0, plateT: 4 },
+            },
+          });
+          return {
+            ok: true, method: trayMethod, source: req.source, transforms: trayTransforms,
+            release: trayRelease, rejectionLedger: ledger,
+            pkg: { axis: 'Z', frame: trayTransforms.frame as never, pieces: { jacketA: tray.pieces.wall, jacketB: tray.pieces.wall, basePlate: tray.pieces.basePlate, skin: tray.pieces.siliconeSkin, jacketSolid: tray.pieces.wall }, extraction: { A: { pass: true, freeAtMm: 0 }, B: null }, siliconeDemold: tray.siliconeDemold, panels: 1 as 2, jacketDim: [0, 0, 0], plateDim: [0, 0, 0], plateT: 4, ports: { crown: null, vents: [], vAx: 0, u3: 1, v3: 2 }, siliconeMl: tray.siliconeMl, cavityLoops: [], cavitySections: [], cavity: master, warnings: trayWarnings },
+            masterBase: tray.pieces.masterBase,
+            printability: {}, checks: [], gapEff: params.gap,
+            clearanceBand: undefined, files, warnings: trayWarnings,
+          };
+        } catch (err) {
+          ledger.push({ candidate: 'open-face tray', stage: 'export', reason: err instanceof Error ? err.message : String(err) });
+        }
+      } catch (err) {
+        ledger.push({ candidate: 'open-face tray', stage: 'construction', reason: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  }
 
   for (const phase of phases) {
   for (const gap of phase.gaps) {

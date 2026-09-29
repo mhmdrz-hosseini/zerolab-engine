@@ -47,6 +47,8 @@ const RIBS = has('ribs');
 const MATERIAL = (arg('material') as 'silicone' | 'hotWax' | undefined) ?? undefined;
 const PANELS = Number(arg('panels') ?? 2) === 3 ? 3 as const : 2 as const;
 const VERTICAL = arg('vertical') as Axis | undefined;
+const CAST = (arg('cast') as 'front_only' | 'all_sides' | 'inner_and_outer' | undefined) ?? undefined;
+const ROLE = (arg('role') as 'positive_master' | 'prebuilt_negative_mold' | 'tooling' | undefined) ?? undefined;
 const SPLIT = arg('split') as Axis | undefined;
 const NO_ZIP = has('no-zip');
 
@@ -144,6 +146,7 @@ const plan = await planMold({
     engineCommit,
   },
   ports: false,
+  castingIntent: { inputRole: ROLE ?? 'positive_master', requiredSurfaces: CAST ?? 'all_sides' },
   extraWarnings: [...warnings, ...report.warnings],
   onProgress: (stage) => console.log(`${el()} ${stage}`),
 });

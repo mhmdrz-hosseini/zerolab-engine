@@ -30,7 +30,7 @@ export interface PackageInfo {
   jacketDim: number[];
   plateDim: number[];
   warnings: string[];
-  checks: { name: string; pass: boolean; detail: string }[];
+  checks: { name: string; pass: boolean; detail: string; hard?: boolean }[];
   crown: { u: number; v: number } | null;
   ventCount: number;
   clearanceBand?: { requestedGap: number; min: number; p10: number; p50: number; p90: number; withinBand: boolean };
@@ -61,9 +61,14 @@ export function buildPrintFiles(deps: {
   const root = `pourbox_${safe}`;
   const stl = (m: MeshArrays) => new Uint8Array(writeStlBinary(m));
 
+  // Open-face relief tray (Task 6): master+plate and the contour wall —
+  // no split jackets, open-top pour, peel after cure.
+  const isTray = info.method?.family === 'open_face_relief' && !!parts.trayWall;
   // 3-piece packages swap jacket_B for the two sub-panels
   const is3 = !!(parts.jacketB1 && parts.jacketB2);
-  const jacketDefs = is3
+  const jacketDefs = isTray ? [
+    { name: 'tray wall', file: '02_jacket/tray_wall.stl', mesh: parts.trayWall, note: 'contour wall, NO roof — the open top is the pour face and the peel path' },
+  ] : is3
     ? [
       { name: 'jacket A', file: '02_jacket/jacket_A.stl', mesh: parts.jacketA, note: 'print rim-down; tongue side is the mating face' },
       { name: 'jacket B1', file: '02_jacket/jacket_B1.stl', mesh: parts.jacketB1!, note: 'print rim-down; slides +depth after A is off' },
@@ -74,7 +79,7 @@ export function buildPrintFiles(deps: {
       { name: 'jacket B', file: '02_jacket/jacket_B.stl', mesh: parts.jacketB, note: 'print rim-down; groove side is the mating face' },
     ];
   const partDefs = [
-    { name: 'master base', file: '01_master/master_base.stl', mesh: masterMesh, note: '' },
+    { name: isTray ? 'tray base + master' : 'master base', file: '01_master/master_base.stl', mesh: masterMesh, note: '' },
     ...jacketDefs,
     { name: 'silicone skin preview', file: '03_preview/silicone_skin.stl', mesh: parts.siliconeSkin, note: 'NOT printed — this is the mold the silicone will become' },
   ];
@@ -204,35 +209,50 @@ export function buildPrintFiles(deps: {
     parts: partMeta,
   };
 
-  const assembly = `# Pour Box Assembly — ${info.name}
+  const stepsText = isTray
+    ? [
+      `1. Print \`master_base\` (master fused to the tray floor — ${plateOrient}) and \`tray_wall\` (${rimOrient}).`,
+      '2. Seat the **tray wall** on the tray floor — a plain contour ring: no seams, no clamps, no sealant.',
+      '3. Pour RTV silicone slowly into the **open tray** until it reaches the wall top — the backing above the relief is deliberate.',
+      '4. Cure fully, then lift the cured silicone straight out of the open wall.',
+      '5. Peel the master from the silicone. Undercuts or through-hole posts need the demold review — the open-top tray does NOT certify master release.',
+    ].join('\n')
+    : [
+      `1. Print \`master_base\` (doll + fused base plate — ${plateOrient}), ${is3 ? '`jacket_A`, `jacket_B1` and `jacket_B2`' : '`jacket_A` and `jacket_B`'} (${rimOrient}).`,
+      is3
+        ? '2. Join **jacket B1** and **jacket B2** on the base plate — their sub-joint registers sideways; seat both rims.'
+        : '2. Bring **jacket B** in from its side; seat its rim on the base plate.',
+      `3. Fit **jacket A** so its tongue enters ${is3 ? "the B1/B2 groove" : "B's groove"}; the rims register against the plate edge.`,
+      '4. Clamp the flat external seam rails, evenly spaced. Seal the base and parting seams; printed joints are not liquid-tight by themselves. Seal any optional wall outlets before filling.',
+      '5. Pour RTV silicone slowly through the **open crown** until it reaches the brim.',
+      `6. Cure fully, remove clips and sealant, ${is3
+        ? `slide jacket A along +${info.axis}, then B1/B2 sideways (±depth) one at a time.`
+        : `slide jacket A along +${info.axis} and B along -${info.axis}.`}`,
+      '7. Demold the master from the cured silicone. Deep undercuts or enclosed handles may need a planned cut in the silicone; rigid jacket release does not prove master release.',
+    ].join('\n');
 
-Split axis: **±${info.axis}** · Silicone needed: **≈ ${info.siliconeMl.toFixed(0)} mL** (prepare ${(info.siliconeMl * 1.1).toFixed(0)} mL)
+  const assembly = `# ${isTray ? 'Open-Face Relief Tray' : 'Pour Box Assembly'} — ${info.name}
+
+${isTray ? `Method: **open-face relief tray** · Silicone needed: **≈ ${info.siliconeMl.toFixed(0)} mL** (prepare ${(info.siliconeMl * 1.1).toFixed(0)} mL)` : `Split axis: **±${info.axis}** · Silicone needed: **≈ ${info.siliconeMl.toFixed(0)} mL** (prepare ${(info.siliconeMl * 1.1).toFixed(0)} mL)`}
 
 ## Hardware
-- 6–10 binder clips sized to the 5 mm seam rail stack; removable seam/base sealant
+${isTray ? '- none — the tray wall seats on the tray floor; no clamps or sealant required' : '- 6–10 binder clips sized to the 5 mm seam rail stack; removable seam/base sealant'}
 
 ## Material & print profiles
 ${materialNote}
 - Per-part slicer settings ship in \`print_profile.json\` — the **master** wants quality (0.12–0.16 mm layers; the silicone reproduces its surface), the **jackets** want speed/structure (0.6 mm nozzle OK).
 
 ## Steps
-1. Print \`master_base\` (doll + fused base plate — ${plateOrient}), ${is3 ? '`jacket_A`, `jacket_B1` and `jacket_B2`' : '`jacket_A` and `jacket_B`'} (${rimOrient}).
-2. ${is3
-    ? 'Join **jacket B1** and **jacket B2** on the base plate — their sub-joint registers sideways; seat both rims.'
-    : 'Bring **jacket B** in from its side; seat its rim on the base plate.'}
-3. Fit **jacket A** so its tongue enters ${is3 ? "the B1/B2 groove" : "B's groove"}; the rims register against the plate edge.
-4. Clamp the flat external seam rails, evenly spaced. Seal the base and parting seams; printed joints are not liquid-tight by themselves. Seal any optional wall outlets before filling.
-5. Pour RTV silicone slowly through the **open crown** until it reaches the brim.
-6. Cure fully, remove clips and sealant, ${is3
-    ? `slide jacket A along +${info.axis}, then B1/B2 sideways (±depth) one at a time.`
-    : `slide jacket A along +${info.axis} and B along -${info.axis}.`}
-7. Demold the master from the cured silicone. Deep undercuts or enclosed handles may need a planned cut in the silicone; rigid jacket release does not prove master release.
+${stepsText}
 
 ## Parts
 ${partMeta.map((p) => `- **${p.name}** — \`${p.file}\` (${p.triangles.toLocaleString()} tris${p.volumeCm3 ? `, ${p.volumeCm3} cm³` : ''}) — ${p.note}`).join('\n')}
 
-${info.printability ? `## Support forecast (coarse 45° layer analysis)\n${Object.entries(info.printability).map(([name, r]) => `- **${name}**: bed contact ≈ ${r.bedAreaMm2} mm² · unsupported growth ≈ ${r.overhangAreaMm2} mm²${r.worstBands.length ? ` — paint supports around the ${r.worstBands.slice(0, 2).map((b) => `${b.areaMm2} mm² band at z ${b.zLo}–${b.zHi}`).join(' and ')}` : ''}`).join('\n')}\n` : ''}
-${info.warnings.length ? `## Warnings\n${info.warnings.map((w) => `- ⚠ ${w}`).join('\n')}` : ''}
+${info.printability ? `## Support forecast (coarse 45° layer analysis)
+${Object.entries(info.printability).map(([name, r]) => `- **${name}**: bed contact ≈ ${r.bedAreaMm2} mm² · unsupported growth ≈ ${r.overhangAreaMm2} mm²${r.worstBands.length ? ` — paint supports around the ${r.worstBands.slice(0, 2).map((b) => `${b.areaMm2} mm² band at z ${b.zLo}–${b.zHi}`).join(' and ')}` : ''}`).join('\n')}
+` : ''}
+${info.warnings.length ? `## Warnings
+${info.warnings.map((w) => `- ⚠ ${w}`).join('\n')}` : ''}
 `;
 
   const printProfile = {

@@ -14,6 +14,7 @@
     "smoke:m5": "tsx scripts/smoke_m5.ts",
     "smoke:ai": "tsx scripts/smoke_ai.ts",
     "smoke:reliability": "tsx scripts/smoke_reliability.ts",
+    "regression:methods": "tsx scripts/regression_methods.ts",
     "postinstall": "node scripts/sync-wasm.mjs"
   },
   "dependencies": {

@@ -1,0 +1,162 @@
+[w0] (1/41) RUN  Bunny_Egg_Small__large
+[w0] (1/41) DONE Bunny_Egg_Small__large → rejected/construction (26s)
+[w0] (2/41) RUN  Bunny_Egg_Small__small
+[w0] (2/41) DONE Bunny_Egg_Small__small → exported_metadata_incomplete (6s)
+[w0] (3/41) RUN  cutegnome_(1)__large
+[w0] (3/41) DONE cutegnome_(1)__large → rejected/construction (8s)
+[w0] (4/41) RUN  cutegnome_(1)__small
+[w0] (4/41) DONE cutegnome_(1)__small → exported_metadata_incomplete (4s)
+[w0] (5/41) RUN  japandi_hart_klein__large
+[w0] (5/41) DONE japandi_hart_klein__large → rejected/unknown (1s)
+[w0] (6/41) RUN  japandi_hart_klein__small
+[w0] (6/41) DONE japandi_hart_klein__small → rejected/unknown (1s)
+[w0] (7/41) RUN  kittie__large
+[w0] (7/41) DONE kittie__large → exported_metadata_incomplete (35s)
+[w0] (8/41) RUN  kittie__small
+[w0] (8/41) DONE kittie__small → exported_metadata_incomplete (8s)
+[w0] (9/41) RUN  Medium__large
+[w0] (9/41) DONE Medium__large → rejected/export (90s)
+[w0] (10/41) RUN  Medium__small
+[w0] (10/41) DONE Medium__small → rejected/export (24s)
+[w0] (11/41) RUN  Montagem_flat__large
+[w0] (11/41) DONE Montagem_flat__large → exported_metadata_incomplete (9s)
+[w0] (12/41) RUN  Montagem_flat__small
+[w0] (12/41) DONE Montagem_flat__small → exported_metadata_incomplete (2s)
+[w0] (13/41) RUN  obj_1_Candle_lamp__large
+[w0] (13/41) DONE obj_1_Candle_lamp__large → exported_metadata_incomplete (74s)
+[w0] (14/41) RUN  obj_1_Candle_lamp__small
+[w0] (14/41) DONE obj_1_Candle_lamp__small → exported_metadata_incomplete (12s)
+[w0] (15/41) RUN  obj_1_christmas_angel2__large
+[w0] (15/41) DONE obj_1_christmas_angel2__large → exported_metadata_incomplete (111s)
+[w0] (16/41) RUN  obj_1_christmas_angel2__small
+[w0] (16/41) DONE obj_1_christmas_angel2__small → rejected/export (37s)
+[w0] (17/41) RUN  obj_1_Entwurf_einer_Vase.3mf__large
+[w0] (17/41) DONE obj_1_Entwurf_einer_Vase.3mf__large → exported_metadata_incomplete (77s)
+[w0] (18/41) RUN  obj_1_Entwurf_einer_Vase.3mf__small
+[w0] (18/41) DONE obj_1_Entwurf_einer_Vase.3mf__small → rejected/gate (10s)
+[w0] (19/41) RUN  obj_1_Kitten__large
+[w0] (19/41) DONE obj_1_Kitten__large → exported_metadata_incomplete (65s)
+[w0] (20/41) RUN  obj_1_Kitten__small
+[w0] (20/41) DONE obj_1_Kitten__small → exported_metadata_incomplete (14s)
+[w0] (21/41) RUN  obj_1_Körper__large
+[w0] (21/41) DONE obj_1_Körper__large → exported_metadata_incomplete (26s)
+[w0] (22/41) RUN  obj_1_Körper__small
+[w0] (22/41) DONE obj_1_Körper__small → exported_metadata_incomplete (5s)
+[w0] (23/41) RUN  obj_1_Minimalist_Giraffe_figurine-2__large
+[w0] (23/41) DONE obj_1_Minimalist_Giraffe_figurine-2__large → exported_metadata_incomplete (18s)
+[w0] (24/41) RUN  obj_1_Minimalist_Giraffe_figurine-2__small
+[w0] (24/41) DONE obj_1_Minimalist_Giraffe_figurine-2__small → exported_metadata_incomplete (6s)
+[w0] (25/41) RUN  obj_1_sleepy_poodle__large
+[w0] (25/41) DONE obj_1_sleepy_poodle__large → rejected/construction (33s)
+[w0] (26/41) RUN  obj_1_sleepy_poodle__small
+[w0] (26/41) DONE obj_1_sleepy_poodle__small → exported_metadata_incomplete (18s)
+[w0] (27/41) RUN  obj_1_Spiderman_urban__large
+[w0] (27/41) DONE obj_1_Spiderman_urban__large → rejected/construction (29s)
+[w0] (28/41) RUN  obj_1_Spiderman_urban__small
+[w0] (28/41) DONE obj_1_Spiderman_urban__small → exported_metadata_incomplete (4s)
+[w0] (29/41) RUN  obj_1_Wichtel6__large
+[w0] (29/41) DONE obj_1_Wichtel6__large → exported_metadata_incomplete (163s)
+[w0] (30/41) RUN  obj_1_Wichtel6__small
+[w0] (30/41) DONE obj_1_Wichtel6__small → exported_metadata_incomplete (26s)
+[w0] (31/41) RUN  obj_1_情人节玫瑰花束摆件__large
+[w0] (31/41) DONE obj_1_情人节玫瑰花束摆件__large → rejected/construction (281s)
+[w0] (32/41) RUN  obj_1_情人节玫瑰花束摆件__small
+[w0] (32/41) DONE obj_1_情人节玫瑰花束摆件__small → exported_metadata_incomplete (48s)
+[w0] (33/41) RUN  obj_2_Körper__large
+[w0] (33/41) DONE obj_2_Körper__large → exported_metadata_incomplete (22s)
+[w0] (34/41) RUN  obj_2_Körper__small
+[w0] (34/41) DONE obj_2_Körper__small → exported_metadata_incomplete (5s)
+[w0] (35/41) RUN  obj_2_latern_cap__large
+[w0] (35/41) DONE obj_2_latern_cap__large → exported_metadata_incomplete (9s)
+[w0] (36/41) RUN  obj_2_latern_cap__small
+[w0] (36/41) DONE obj_2_latern_cap__small → exported_metadata_incomplete (2s)
+[w0] (37/41) RUN  rose_teelicht_mw_fertig__large
+[w0] (37/41) DONE rose_teelicht_mw_fertig__large → exported_metadata_incomplete (227s)
+[w0] (38/41) RUN  rose_teelicht_mw_fertig__small
+[w0] (38/41) DONE rose_teelicht_mw_fertig__small → exported_metadata_incomplete (45s)
+[w0] (39/41) RUN  tackaliscSTL__large
+[w0] (39/41) DONE tackaliscSTL__large → rejected/construction (138s)
+[w0] (40/41) RUN  tackaliscSTL__small
+[w0] (40/41) DONE tackaliscSTL__small → exported_metadata_incomplete (43s)
+[w0] (41/41) RUN  christmas+tree+MEDIUM.step
+[w0] (41/41) DONE christmas+tree+MEDIUM.step → needs_input/intake (0s)
+
+PASS  Bunny_Egg_Small__large  (rejected/construction)
+FAIL  Bunny_Egg_Small__small  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: Bunny_Egg_Small__small — class exported→exported_metadata_incomplete
+PASS  cutegnome_(1)__large  (rejected/construction)
+FAIL  cutegnome_(1)__small  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: cutegnome_(1)__small — class exported→exported_metadata_incomplete
+FAIL  japandi_hart_klein__large  (rejected/unknown — class rejected/unknown ≠ expected intake_rejected)
+INFO drift vs frozen: japandi_hart_klein__large — class intake_rejected→rejected
+FAIL  japandi_hart_klein__small  (rejected/unknown — class rejected/unknown ≠ expected intake_rejected)
+INFO drift vs frozen: japandi_hart_klein__small — class intake_rejected→rejected
+FAIL  kittie__large  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: kittie__large — class exported→exported_metadata_incomplete; axis ±Y→±X
+FAIL  kittie__small  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: kittie__small — class exported→exported_metadata_incomplete; axis ±Z→±Y; silicone 111.6→141.5 mL
+PASS  Medium__large  (rejected/export)
+PASS  Medium__small  (rejected/export)
+FAIL  Montagem_flat__large  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: Montagem_flat__large — class exported→exported_metadata_incomplete
+FAIL  Montagem_flat__small  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: Montagem_flat__small — class exported→exported_metadata_incomplete
+FAIL  obj_1_Candle_lamp__large  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: obj_1_Candle_lamp__large — class exported→exported_metadata_incomplete; axis ±Z→±Y; silicone 1986.2→2138.4 mL
+FAIL  obj_1_Candle_lamp__small  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: obj_1_Candle_lamp__small — class exported→exported_metadata_incomplete
+FAIL  obj_1_christmas_angel2__large  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: obj_1_christmas_angel2__large — class exported→exported_metadata_incomplete; axis ±Y→±X
+PASS  obj_1_christmas_angel2__small  (rejected/export)
+FAIL  obj_1_Entwurf_einer_Vase.3mf__large  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: obj_1_Entwurf_einer_Vase.3mf__large — class exported→exported_metadata_incomplete
+PASS  obj_1_Entwurf_einer_Vase.3mf__small  (rejected/gate)
+FAIL  obj_1_Kitten__large  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: obj_1_Kitten__large — class exported→exported_metadata_incomplete
+FAIL  obj_1_Kitten__small  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: obj_1_Kitten__small — class exported→exported_metadata_incomplete
+FAIL  obj_1_Körper__large  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: obj_1_Körper__large — class exported→exported_metadata_incomplete
+FAIL  obj_1_Körper__small  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: obj_1_Körper__small — class exported→exported_metadata_incomplete
+FAIL  obj_1_Minimalist_Giraffe_figurine-2__large  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: obj_1_Minimalist_Giraffe_figurine-2__large — class exported→exported_metadata_incomplete
+FAIL  obj_1_Minimalist_Giraffe_figurine-2__small  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: obj_1_Minimalist_Giraffe_figurine-2__small — class exported→exported_metadata_incomplete
+PASS  obj_1_sleepy_poodle__large  (rejected/construction)
+FAIL  obj_1_sleepy_poodle__small  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: obj_1_sleepy_poodle__small — class exported→exported_metadata_incomplete
+FAIL  obj_1_Spiderman_urban__large  (rejected/construction — class rejected/construction ≠ expected exported_metadata_incomplete)
+INFO drift vs frozen: obj_1_Spiderman_urban__large — class exported→rejected
+FAIL  obj_1_Spiderman_urban__small  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: obj_1_Spiderman_urban__small — class exported→exported_metadata_incomplete
+FAIL  obj_1_Wichtel6__large  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: obj_1_Wichtel6__large — class exported→exported_metadata_incomplete
+FAIL  obj_1_Wichtel6__small  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: obj_1_Wichtel6__small — class exported→exported_metadata_incomplete
+FAIL  obj_1_情人节玫瑰花束摆件__large  (rejected/construction — class rejected/construction ≠ expected exported_metadata_incomplete)
+INFO drift vs frozen: obj_1_情人节玫瑰花束摆件__large — class exported→rejected
+FAIL  obj_1_情人节玫瑰花束摆件__small  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: obj_1_情人节玫瑰花束摆件__small — class exported→exported_metadata_incomplete
+FAIL  obj_2_Körper__large  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: obj_2_Körper__large — class exported→exported_metadata_incomplete
+FAIL  obj_2_Körper__small  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: obj_2_Körper__small — class exported→exported_metadata_incomplete
+FAIL  obj_2_latern_cap__large  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: obj_2_latern_cap__large — class exported→exported_metadata_incomplete
+FAIL  obj_2_latern_cap__small  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: obj_2_latern_cap__small — class exported→exported_metadata_incomplete
+FAIL  rose_teelicht_mw_fertig__large  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: rose_teelicht_mw_fertig__large — class exported→exported_metadata_incomplete; axis ±Z→±Y; silicone 1400.7→1910.9 mL
+FAIL  rose_teelicht_mw_fertig__small  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: rose_teelicht_mw_fertig__small — class exported→exported_metadata_incomplete
+FAIL  tackaliscSTL__large  (rejected/construction — class rejected/construction ≠ expected exported_metadata_incomplete)
+INFO drift vs frozen: tackaliscSTL__large — class exported→rejected
+FAIL  tackaliscSTL__small  (exported_metadata_incomplete — production-ready contract: method missing/empty; source.inputSha256 missing; transforms missing; finalFileAudit missing; releaseResult missing; rejectionLedger missing)
+INFO drift vs frozen: tackaliscSTL__small — class exported→exported_metadata_incomplete
+PASS  christmas+tree+MEDIUM.step  (needs_input/intake)
+PASS  equivalence koerper @200mm (class, axis, silicone within 2%)
+PASS  equivalence koerper @50mm (class, axis, silicone within 2%)
+
+REGRESSION METHODS: FAIL (33 failing check(s) over 41 cases) — details in docs/superpowers/validation/last-verification.json
+EXIT=1

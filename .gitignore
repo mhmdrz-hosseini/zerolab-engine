@@ -12,7 +12,17 @@ IDEAL FOR THE STUDY/
 .zcode/
 CONTEXT.md
 wayfinder/
-docs/superpowers/
+docs/superpowers/*
 
 *.log
 .DS_Store
+
+# Reliability validation evidence (implementation plan Task 1) — tracked evidence,
+# unlike the rest of docs/superpowers/ which stays session-local
+!docs/superpowers/validation/
+!docs/superpowers/validation/**
+!docs/superpowers/validation/*.log
+docs/superpowers/validation/last-verification.json
+
+# Fresh verification runs (frozen OUTPUT TEST 1 stays out of git via OUTPUT/)
+OUTPUT VALIDATION/

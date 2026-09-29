@@ -1,0 +1,42 @@
+== npm run build ==
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+[32m✓ built in 5.57s[39m
+BUILD_EXIT=0
+== npm run smoke:reliability ==
+PASS  orientation override vert=Y  ("rotate +90° about X so the base plate lies flat on the bed (mold verti…")
+PASS  orientation override vert=X  ("rotate −90° about Y so the base plate lies flat on the bed (mold verti…")
+  Case A total 5.8s
+
+=== Case B: reference-scale requests unaffected ===
+PASS  150 mm simple: requested 8 mm gap stays 8 mm  (floor 4, effective 8)
+PASS  150 mm simple: requested 5 mm wall stays 5 mm  (floor 3, effective 5)
+PASS  150 mm complex: 8 mm request above the 5 mm floor is untouched  (effective 8)
+PASS  reference plate keeps its calculated thickness  (plateT 4)
+PASS  large plate keeps its calculated thickness  (plateT 4)
+
+=== Case C: flat/large plaque, Standard FDM ===
+  plaque 186 mm · trapped 0.1% · best Z
+PASS  8 mm gap request unaffected by floors  (floor 4, effective 8)
+PASS  5 mm standard wall unaffected by floors  (floor 3, effective 5)
+PASS  base not thickened at large scale  (plateT 4)
+PASS  plaque package generated  (axis ±Z)
+PASS  plaque structural gates pass  (all structural checks ✓)
+PASS  plaque hug shortfall confined to merged-offset regions  (min 6.07 ≥ 6 · audit ⚠ sampled minimum=6.07 p10=6.48 p50=7.9 p90=8.9 mm (target min ≥ 2, p10 ≥ 6.5) ⚠)
+  hug band: p50 7.9 vs requested 8 → Tight-Hug advisory not needed
+PASS  Tight Hug remains advisory (gap geometry untouched)  (p50 7.9 vs 8 — no auto-regeneration)
+  frame vert=Y → slicer must quarter-turn; orientation text asserted in Case A
+
+total PASS
+SMOKE:RELIABILITY PASS
+SMOKE_EXIT=0
+== npx tsx scripts/regression_mold.ts ==
+PASS sparse box: solid connected parts, fitting joint, attached master, clear release
+PASS thin asymmetric projection: solid connected parts, fitting joint, attached master, clear release
+PASS translated away from origin: solid connected parts, fitting joint, attached master, clear release
+PASS X pull: solid connected parts, fitting joint, attached master, clear release
+PASS Z pull / horizontal input: solid connected parts, fitting joint, attached master, clear release
+MOLD REGRESSIONS PASS
+REGRESSION_EXIT=0

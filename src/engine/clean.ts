@@ -276,7 +276,7 @@ export function auditMeshArrays(vp: Float32Array, tv: Uint32Array): MeshAudit {
   for (const vol of compVol.values()) {
     components++;
     if (Math.abs(vol) < 1e-6) zeroVolumeComponents++;
-    else volumeCm3 += Math.abs(vol) / 1000;
+    else volumeCm3 += vol / 1000;
   }
   return {
     tris: triCount,
@@ -287,7 +287,9 @@ export function auditMeshArrays(vp: Float32Array, tv: Uint32Array): MeshAudit {
     pinchedEdges,
     components,
     zeroVolumeComponents,
-    volumeCm3: Number(volumeCm3.toFixed(1)),
+    // Interior void shells have reversed winding and subtract from the
+    // material volume; taking each shell's absolute value overcounts them.
+    volumeCm3: Number(Math.abs(volumeCm3).toFixed(1)),
   };
 }
 

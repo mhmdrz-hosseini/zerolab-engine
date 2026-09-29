@@ -242,6 +242,7 @@ try {
       ventCount: pkg.ports.vents.length,
       clearanceBand: gates.clearanceBand,
       printability,
+      frame: { vert: pkg.frame.vert, base: pkg.frame.base, plateT: pkg.plateT },
     },
   }));
 } catch (err) {

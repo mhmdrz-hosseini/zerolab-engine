@@ -736,10 +736,9 @@ function travelFor(master: MeshArrays, piece: MeshArrays): number {
   return Math.max(...bboxOfArrays(master).dim) + Math.max(...bboxOfArrays(piece).dim) + 10;
 }
 
-/** Slide `piece` along ±axis in 0.5 mm steps; pass when it stops overlapping all targets.
- *  solidCollision may return a boolean (legacy) or the overlap volume in mm³ —
- *  a numeric result fails only when penetration is ≥ 0.5 mm³ AND non-decreasing
- *  (pressing in), so thin decaying construction sheets don't block the ladder. */
+/** Slide `piece` along ±axis using feature-aware steps; pass only after a clear path.
+ *  A numeric collision callback reports overlap volume in mm³. Any meaningful
+ *  overlap blocks release, even when the piece later moves clear. */
 export function simulate(
   piece: MeshArrays, targets: MeshArrays[], axis: Axis, dir: 1 | -1, travel: number,
   solidCollision?: (distance: number) => number | boolean,
@@ -762,17 +761,18 @@ export function simulate(
     g.boundsTree = bvh;
     return bvh;
   });
-  const step = 0.5;
   const d = UNIT[axis].map((n) => n * dir) as [number, number, number];
   const p = AXES.indexOf(axis), pb = bboxOfArrays(piece);
   const bounds = targets.map(bboxOfArrays);
+  const narrowest = Math.min(pb.dim[p], ...bounds.map((b) => b.dim[p]));
+  // Features below this resolution cannot be certified by a sampled sweep.
+  const step = Math.min(0.5, narrowest / 2);
   try {
-    for (let t = 0.05; t <= travel + step; t += step) {
-      // Per-step AABB early-out: the exact BVH test only runs while the moved
-      // piece's box still overlaps a target's box — sliding away from contact
-      // must not pay the near-coplanar tri-tri cost at every step.
-      let hit = false;
-      let prevR = Infinity;
+    if (narrowest < 0.02) return { pass: false, freeAtMm: 0 };
+    for (let t = Math.min(0.05, step / 2); t <= travel + step; t += step) {
+      // A swept AABB is a conservative broad phase; only possible contacts
+      // receive the expensive volumetric test or legacy surface test.
+      let candidateOverlap = false;
       for (let b = 0; b < targetBvhs.length; b++) {
         const bb = bounds[b];
         let overlap = true;
@@ -781,18 +781,18 @@ export function simulate(
           const pmin = pb.min[a] + Math.min(shift, 0), pmax = pb.min[a] + pb.dim[a] + Math.max(shift, 0);
           overlap = pmax > bb.min[a] + 0.01 && pmin < bb.min[a] + bb.dim[a] - 0.01;
         }
-        if (overlap && targetBvhs[b].intersectsGeometry(pieceGeom, new THREE.Matrix4().makeTranslation(d[0] * t, d[1] * t, d[2] * t))) { hit = true; break; }
-      }
-      if (hit) {
-        if (!solidCollision) return { pass: false, freeAtMm: t };
-        const r = solidCollision(t);
-        if (typeof r === 'boolean') {
-          if (r) return { pass: false, freeAtMm: t };
-        } else {
-          // pressing-in test: penetration ≥ 0.5 mm³ and not decaying
-          if (r >= 0.5 && r >= prevR) return { pass: false, freeAtMm: t };
-          prevR = r;
+        if (overlap) {
+          candidateOverlap = true;
+          if (!solidCollision && targetBvhs[b].intersectsGeometry(pieceGeom, new THREE.Matrix4().makeTranslation(d[0] * t, d[1] * t, d[2] * t))) {
+            return { pass: false, freeAtMm: t };
+          }
         }
+      }
+      // A surface-only BVH test misses one solid fully contained by another.
+      // The volumetric callback must run for every broad-phase candidate.
+      if (candidateOverlap && solidCollision) {
+        const r = solidCollision(t);
+        if (typeof r === 'boolean' ? r : r >= 0.5) return { pass: false, freeAtMm: t };
       }
       const separated = bounds.every(b => dir === 1
         ? pb.min[p] + t > b.min[p] + b.dim[p] + 0.01

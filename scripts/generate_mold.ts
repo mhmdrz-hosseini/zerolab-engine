@@ -61,6 +61,12 @@ const bytes = readFileSync(input);
 const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
 const isGlb = bytes.byteLength > 12 && new DataView(ab).getUint32(0, true) === 0x46546c67;
 const ext = input.toLowerCase().slice(input.lastIndexOf('.') + 1);
+// acceptance matrix: STEP (and 3MF) inputs get an explicit unsupported-format
+// diagnosis — never a silent guess that the bytes are an STL
+if (ext === 'step' || ext === 'stp' || ext === '3mf') {
+  console.error(`generate_mold: unsupported format .${ext} — this platform imports STL/OBJ/GLB only. Convert with a CAD tessellator that preserves units and tolerance, then rerun.`);
+  process.exit(2);
+}
 let full: MeshArrays;
 const warnings: string[] = [];
 if (isGlb || ext === 'glb') {
@@ -100,18 +106,21 @@ if (SIZE !== undefined && SIZE > 0 && Math.abs(SIZE - maxDim) > 0.01) {
 
 // --- kernel gate + analysis ---
 const mod = await loadManifold();
-const man = new mod.Manifold(new mod.Mesh({ numProp: 3, vertProperties: full.vertProperties, triVerts: full.triVerts }));
-if (!isStatusOk(man)) {
-  console.error('generate_mold: mesh topology is not manifold — re-export fused from your modeling tool');
+let analysis: MeshArrays;
+try {
+  const man = new mod.Manifold(new mod.Mesh({ numProp: 3, vertProperties: full.vertProperties, triVerts: full.triVerts }));
+  if (!isStatusOk(man)) throw new Error('status: not manifold');
+  const dec = man.simplify(0.05);
+  const dm = dec.getMesh();
+  analysis = {
+    vertProperties: Float32Array.from(dm.vertProperties),
+    triVerts: Uint32Array.from(dm.triVerts.subarray(0, dm.numTri * 3)),
+  };
+  dec.delete();
+} catch (err) {
+  console.error(`generate_mold: input rejected at intake — the mesh is not a manifold solid (${err instanceof Error ? err.message : err}). Re-export it fused/watertight from your modeling tool, then rerun.`);
   process.exit(2);
 }
-const dec = man.simplify(0.05);
-const dm = dec.getMesh();
-const analysis: MeshArrays = {
-  vertProperties: Float32Array.from(dm.vertProperties),
-  triVerts: Uint32Array.from(dm.triVerts.subarray(0, dm.numTri * 3)),
-};
-dec.delete();
 const report = buildReport(input, { ...full, vertCount: full.vertProperties.length / 3 }, analysis, analysis.triVerts.length / 3, 64);
 console.log(`${el()} intake: ${full.triVerts.length / 3} tris, bbox ${bb0.dim.map((d) => d.toFixed(1)).join(' × ')} mm`);
 
@@ -206,6 +215,25 @@ for (const [name, r] of Object.entries(printability)) {
     (r.worstBands.length ? ` · worst ${r.worstBands[0].areaMm2} mm² @ ${r.worstBands[0].zLo}–${r.worstBands[0].zHi} mm` : ''));
 }
 
+// --- staged rigid-release report (plan Task 2): per-part outcome; silicone
+// demold is carried separately and never implied by a rigid pass ---
+const rigidStep = (part: string, direction: string, r: { pass: boolean; freeAtMm: number; obstacle?: string } | null | undefined) => ({
+  part, direction,
+  pass: !!r?.pass, freeAtMm: r?.freeAtMm ?? 0,
+  ...(!r?.pass && r?.obstacle ? { obstacle: r.obstacle } : {}),
+});
+const is3pcPkg = !!(pkg.pieces.jacketB1 && pkg.pieces.jacketB2);
+const release = {
+  rigid: [
+    rigidStep('jacket_A', `slide ±${pkg.axis}`, pkg.extraction.A),
+    ...(is3pcPkg
+      ? [rigidStep('jacket_B1', `slide ±${pkg.frame.depth}`, pkg.extraction.B1),
+         rigidStep('jacket_B2', `slide ±${pkg.frame.depth}`, pkg.extraction.B2)]
+      : [rigidStep('jacket_B', `slide ±${pkg.axis}`, pkg.extraction.B)]),
+  ],
+  siliconeDemold: pkg.siliconeDemold,
+};
+
 // --- package ---
 const bbOf = (m: MeshArrays) => {
   const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
@@ -228,6 +256,7 @@ try {
       createdAt: new Date().toISOString(),
       params: { gap: GAP, wall: WALL, clearance: CLEARANCE, gapWindow: GAP_WINDOW, ribs: RIBS, material: MATERIAL, panels: PANELS },
       axis: pkg.axis,
+      release,
       siliconeMl: pkg.siliconeMl,
       extraction: {
         A: pkg.extraction.A.freeAtMm,

@@ -299,7 +299,7 @@ function isOk(inst: ManifoldInstance): boolean {
   return v === 'NoError' || v === 0 || v === 'Ok';
 }
 
-export interface ExtractionResult { pass: boolean; freeAtMm: number }
+export interface ExtractionResult { pass: boolean; freeAtMm: number; obstacle?: string }
 export interface MoldPieces {
   jacketA: MeshArrays;
   jacketB: MeshArrays;           // 2-piece: the −pull half. 3-piece: unused shell
@@ -315,6 +315,7 @@ export interface AxisAttempt {
   frame: MoldFrame;
   pieces: MoldPieces;
   extraction: { A: ExtractionResult; B: ExtractionResult | null; B1?: ExtractionResult | null; B2?: ExtractionResult | null };
+  siliconeDemold: SiliconeDemold;
   panels: 2 | 3;
   jacketDim: [number, number, number];
   plateDim: [number, number, number];
@@ -651,42 +652,7 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
       b1Arr = instanceToMeshArrays(b1);
       b2Arr = instanceToMeshArrays(b2);
     }
-    progress('Simulating the release path', 0.82);
-    // Rigid-release semantics, matching the commercial systems: the jacket
-    // half slides against the FLEXIBLE cured silicone, which conforms and
-    // compresses locally — the silicone is not a rigid obstruction. The rigid
-    // obstructions are the MASTER (the glove cannot pass through it) and the
-    // base plate (coplanar sliding contact with the seat, never penetrated).
-    // A per-slice-dilated cavity always clears the master along the split
-    // normal, so failures here indicate real construction defects or blocked
-    // geometry, not silicone contact.
-    const masterArr = instanceToMeshArrays(masterMan);
-    const outside = track(masterMan.subtract(cavitySolid));
-    if (outside.volume() > 0.02) throw new Error('The cavity does not fully contain the master');
-    // Report the overlap VOLUME: the extraction sim fails on PRESSING-IN
-    // (non-decreasing penetration = the half jams against the master), not on
-    // thin construction sheets whose contact decays as the half slides away.
-    const collidesOn = (piece: ManifoldInstance, dirVec: number[]) => (distance: number) => {
-      const moved = piece.translate(dirVec[0] * distance, dirVec[1] * distance, dirVec[2] * distance);
-      const overlap = moved.intersect(masterMan);
-      try { return Math.max(0, overlap.volume()); } finally { overlap.delete(); moved.delete(); }
-    };
-    const aDir = (tongueIsPositive ? 1 : -1) as 1 | -1;
-    const exA = simulate(aArr, [masterArr], axis, aDir, travelFor(master, aArr), collidesOn(A, UNIT[axis].map((n) => n * aDir)));
-    let exB: ExtractionResult | null = null;
-    if (!b1Arr) {
-      progress('Simulating the release path (half B)', 0.86);
-      const bDir = -aDir as 1 | -1;
-      exB = simulate(bArr, [masterArr], axis, bDir, travelFor(master, bArr), collidesOn(B, UNIT[axis].map((n) => n * bDir)));
-    }
-    let exB1: ExtractionResult | null = null, exB2: ExtractionResult | null = null;
-    if (b1 && b2 && b1Arr && b2Arr) {
-      progress('Simulating the release path (sub-panels B1/B2)', 0.88);
-      exB1 = simulate(b1Arr, [masterArr], frame.depth, 1, travelFor(master, b1Arr), collidesOn(b1, UNIT[frame.depth]));
-      exB2 = simulate(b2Arr, [masterArr], frame.depth, -1, travelFor(master, b2Arr), collidesOn(b2, UNIT[frame.depth].map((n) => -n)));
-    }
-
-    progress('Building the contoured base plate', 0.9);
+    progress('Building the contoured base plate', 0.8);
     const plateBlank = track(prismOnVert(plateOutlineCS, v, frame.base - K.plateT, frame.base));
     let localMaster = masterMan;
     if (v === 0) localMaster = track(track(masterMan.rotate(0, -90, 0)).rotate(0, 0, -90));
@@ -698,6 +664,57 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
     const plate = printable(track(plateBlank.add(foot)), 'Base plate');
     if (!isOk(plate)) throw new Error('kernel rejected the base plate');
     const plateArr = instanceToMeshArrays(plate);
+
+    progress('Simulating the release path', 0.84);
+    // Rigid-release semantics, matching the commercial systems: the jacket
+    // half slides against the FLEXIBLE cured silicone, which conforms and
+    // compresses locally — the silicone is not a rigid obstruction. The rigid
+    // obstructions are the MASTER (the glove cannot pass through it), the
+    // base plate (coplanar sliding contact with the seat, never penetrated)
+    // and any jacket panel STILL INSTALLED at that removal stage — assembly
+    // order is A off first, then B (or B1/B2) one at a time. Master demolding
+    // from cured silicone is flexible-material territory and is reported
+    // separately (siliconeDemold), never implied by a rigid pass.
+    const masterArr = instanceToMeshArrays(masterMan);
+    const outside = track(masterMan.subtract(cavitySolid));
+    if (outside.volume() > 0.02) throw new Error('The cavity does not fully contain the master');
+    // Report the overlap VOLUME per target: the extraction sim fails on
+    // PRESSING-IN (non-decreasing penetration = the half jams against the
+    // obstruction), not on thin construction sheets whose contact decays as
+    // the half slides away.
+    const collidesOn = (piece: ManifoldInstance, dirVec: number[], targets: ManifoldInstance[]) =>
+      (distance: number, targetIndex: number) => {
+        const moved = piece.translate(dirVec[0] * distance, dirVec[1] * distance, dirVec[2] * distance);
+        const overlap = moved.intersect(targets[targetIndex]);
+        try { return Math.max(0, overlap.volume()); } finally { overlap.delete(); moved.delete(); }
+      };
+    const aDir = (tongueIsPositive ? 1 : -1) as 1 | -1;
+    let exA: ExtractionResult;
+    let exB: ExtractionResult | null = null, exB1: ExtractionResult | null = null, exB2: ExtractionResult | null = null;
+    const threePiece = !!(b1 && b2 && b1Arr && b2Arr);
+    if (!threePiece) {
+      exA = simulate(aArr, [masterArr, plateArr, bArr], axis, aDir, travelFor(master, aArr),
+        collidesOn(A, UNIT[axis].map((n) => n * aDir), [masterMan, plate, B]),
+        ['master', 'base plate', 'jacket B']);
+      progress('Simulating the release path (half B)', 0.88);
+      const bDir = -aDir as 1 | -1;
+      exB = simulate(bArr, [masterArr, plateArr], axis, bDir, travelFor(master, bArr),
+        collidesOn(B, UNIT[axis].map((n) => n * bDir), [masterMan, plate]),
+        ['master', 'base plate']);
+    } else {
+      const B1 = b1 as ManifoldInstance, B2 = b2 as ManifoldInstance;
+      const b1a = b1Arr as MeshArrays, b2a = b2Arr as MeshArrays;
+      exA = simulate(aArr, [masterArr, plateArr, b1a, b2a], axis, aDir, travelFor(master, aArr),
+        collidesOn(A, UNIT[axis].map((n) => n * aDir), [masterMan, plate, B1, B2]),
+        ['master', 'base plate', 'jacket B1', 'jacket B2']);
+      progress('Simulating the release path (sub-panels B1/B2)', 0.88);
+      exB1 = simulate(b1a, [masterArr, plateArr, b2a], frame.depth, 1, travelFor(master, b1a),
+        collidesOn(B1, UNIT[frame.depth], [masterMan, plate, B2]),
+        ['master', 'base plate', 'jacket B2']);
+      exB2 = simulate(b2a, [masterArr, plateArr, b1a], frame.depth, -1, travelFor(master, b2a),
+        collidesOn(B2, UNIT[frame.depth].map((n) => -n), [masterMan, plate, B1]),
+        ['master', 'base plate', 'jacket B1']);
+    }
 
     const ob = bboxOfArrays(jacketSolidArr);
     const jacketDim = [ob.dim[0], ob.dim[1], ob.dim[2]] as [number, number, number];
@@ -714,6 +731,10 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
         ...(b1Arr && b2Arr ? { jacketB1: b1Arr, jacketB2: b2Arr } : {}),
       },
       extraction: { A: exA, B: exB, B1: exB1, B2: exB2 },
+      siliconeDemold: {
+        status: 'unverified',
+        note: 'Rigid jacket release is simulated; pulling the master out of the cured silicone (stretch, tear, cut path) is a separate flexible-material review and is NOT certified by this release check.',
+      },
       panels: b1Arr ? 3 : 2,
       jacketDim,
       plateDim,
@@ -737,12 +758,16 @@ function travelFor(master: MeshArrays, piece: MeshArrays): number {
 }
 
 /** Slide `piece` along ±axis using feature-aware steps; pass only after a clear path.
- *  A numeric collision callback reports overlap volume in mm³. Any meaningful
- *  overlap blocks release, even when the piece later moves clear. */
+ *  A numeric collision callback reports overlap volume in mm³ per target index.
+ *  Any meaningful overlap blocks release, even when the piece later moves clear;
+ *  a failed step names the obstacle via `targetNames`. */
 export function simulate(
   piece: MeshArrays, targets: MeshArrays[], axis: Axis, dir: 1 | -1, travel: number,
-  solidCollision?: (distance: number) => number | boolean,
+  solidCollision?: (distance: number, targetIndex: number) => number | boolean,
+  targetNames?: string[],
 ): ExtractionResult {
+  const fail = (t: number, b: number): ExtractionResult =>
+    ({ pass: false, freeAtMm: t, obstacle: targetNames?.[b] ?? `target ${b}` });
   const mkGeom = (m: MeshArrays) => {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(m.vertProperties, 3));
@@ -784,15 +809,25 @@ export function simulate(
         if (overlap) {
           candidateOverlap = true;
           if (!solidCollision && targetBvhs[b].intersectsGeometry(pieceGeom, new THREE.Matrix4().makeTranslation(d[0] * t, d[1] * t, d[2] * t))) {
-            return { pass: false, freeAtMm: t };
+            return fail(t, b);
           }
         }
       }
       // A surface-only BVH test misses one solid fully contained by another.
       // The volumetric callback must run for every broad-phase candidate.
       if (candidateOverlap && solidCollision) {
-        const r = solidCollision(t);
-        if (typeof r === 'boolean' ? r : r >= 0.5) return { pass: false, freeAtMm: t };
+        for (let b = 0; b < targetBvhs.length; b++) {
+          const bb = bounds[b];
+          let overlap = true;
+          for (let a = 0; a < 3 && overlap; a++) {
+            const shift = d[a] * t;
+            const pmin = pb.min[a] + Math.min(shift, 0), pmax = pb.min[a] + pb.dim[a] + Math.max(shift, 0);
+            overlap = pmax > bb.min[a] + 0.01 && pmin < bb.min[a] + bb.dim[a] - 0.01;
+          }
+          if (!overlap) continue;
+          const r = solidCollision(t, b);
+          if (typeof r === 'boolean' ? r : r >= 0.5) return fail(t, b);
+        }
       }
       const separated = bounds.every(b => dir === 1
         ? pb.min[p] + t > b.min[p] + b.dim[p] + 0.01
@@ -811,6 +846,7 @@ export interface MoldPackage {
   frame: MoldFrame;
   pieces: MoldPieces;
   extraction: { A: ExtractionResult; B: ExtractionResult | null; B1?: ExtractionResult | null; B2?: ExtractionResult | null };
+  siliconeDemold: SiliconeDemold;
   panels: 2 | 3;
   jacketDim: [number, number, number];
   plateDim: [number, number, number];
@@ -823,10 +859,19 @@ export interface MoldPackage {
   failedAxes: { axis: Axis; reason: string }[];
 }
 
+/** Master demolding from the cured silicone is a FLEXIBLE-material problem
+ *  (stretch, tear, cut path) that a rigid-body release sim cannot certify.
+ *  Carried explicitly so no consumer can read rigid release as silicone release. */
+export interface SiliconeDemold {
+  status: 'unverified';
+  note: string;
+}
+
 const extractionPass = (e: { A: ExtractionResult; B: ExtractionResult | null; B1?: ExtractionResult | null; B2?: ExtractionResult | null }): boolean =>
   e.A.pass && (e.B ? e.B.pass : (e.B1?.pass ?? false) && (e.B2?.pass ?? false));
 const extractionFailText = (e: { A: ExtractionResult; B: ExtractionResult | null; B1?: ExtractionResult | null; B2?: ExtractionResult | null }): string => {
-  const part = (name: string, r: ExtractionResult | null | undefined): string => r ? `${name} ${r.pass ? '✓' : '✗'}@${r.freeAtMm}mm` : `${name} —`;
+  const part = (name: string, r: ExtractionResult | null | undefined): string =>
+    r ? `${name} ${r.pass ? '✓' : '✗'}@${r.freeAtMm}mm${!r.pass && r.obstacle ? `→${r.obstacle}` : ''}` : `${name} —`;
   return `extraction failed (${part('A', e.A)}, ${part('B', e.B)}, ${part('B1', e.B1)}, ${part('B2', e.B2)})`;
 };
 

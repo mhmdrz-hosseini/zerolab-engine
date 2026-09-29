@@ -8,6 +8,11 @@ import { cleanExportMesh, type MeshAudit } from './clean';
 import type { ManifoldMod } from './manifoldLoader';
 import type { Axis, GenerateParams, MeshArrays } from './types';
 
+export interface ReleaseReport {
+  rigid: { part: string; direction: string; pass: boolean; freeAtMm: number; obstacle?: string }[];
+  siliconeDemold: { status: string; note: string };
+}
+
 export interface PackageInfo {
   name: string;
   createdAt: string;
@@ -15,6 +20,7 @@ export interface PackageInfo {
   axis: string;
   siliconeMl: number;
   extraction: { A: number; B: number };
+  release?: ReleaseReport;   // staged rigid-release outcome + separate silicone demold status
   jacketDim: number[];
   plateDim: number[];
   warnings: string[];
@@ -147,6 +153,7 @@ export function buildPrintFiles(deps: {
     siliconeMl: Number(info.siliconeMl.toFixed(1)),
     recommendedPrep: Number((info.siliconeMl * 1.1).toFixed(1)),
     extraction: info.extraction,
+    releaseResult: info.release ?? null,
     jacketOuterMm: info.jacketDim.map((d) => Number(d.toFixed(1))),
     basePlateMm: info.plateDim.map((d) => Number(d.toFixed(1))),
     ports: { crown: null as null, ventCount: info.ventCount },

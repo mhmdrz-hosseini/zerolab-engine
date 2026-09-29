@@ -105,6 +105,41 @@ shows `finalFileAudit` + `releaseResult` present in real packages (Körper small
 shipping with warnings). Remaining contract violations: `method`, `source`, `transforms`,
 `rejectionLedger` — Task 4 scope.
 
+## Task 4 — one shared candidate pipeline (CLI = browser)
+
+Engine changes (`src/engine/planner.ts` new, `src/engine/split.ts`, `src/engine/export.ts`,
+`src/engine/types.ts`, `src/workers/geometry.worker.ts`, `scripts/generate_mold.ts`):
+
+- `planMold()` owns the complete candidate evaluation: `rankSplitAxes` (shared quiet-line ranking),
+  the gap-retry ladder (4→6→8 undercuts don't shrink with the master), the 3-piece fallback phase,
+  and per candidate: construction → staged rigid release → hard gates → master/base fusion →
+  export prep (cleanup + serialized-bytes final audit). Any stage failure yields to the next
+  candidate and lands in the rejection ledger. Export-prep runs INSIDE the loop in every adapter —
+  a candidate whose package would fail the final audit never wins (verified: the parity fixture's
+  ±X@gap-4 candidate is kernel-invalid after serialization and is rejected by both adapters).
+- `project.json` now carries the full production-ready contract: `method` (family/panels/splitAxis/
+  confidence), `source` (inputSha256, units, scale policy, engine commit), `transforms` (structured
+  printer orientation — a non-Z vertical never claims "as exported"), `rejectionLedger`,
+  `finalFileAudit`, `releaseResult`.
+- The CLI was rewritten on planMold (~90 duplicated lines removed); the browser worker generates
+  through the same planner (file SHA-256 hashed at ingest) and its export click transfers the
+  planner-built, already-audited bytes — browser packages are metadata-identical to the CLI's.
+- New test: `scripts/regression_parity.ts` — same fixture through the CLI subprocess AND the
+  library pipeline: axis/panels/silicone/transform parity on Z-up and rotated inputs, rotation
+  invariance (±Z → ±Y under a 90° X-rotation, silicone identical), transform correctness.
+- Acceptance change recorded in the manifest: the 29 exported cases flip
+  `exported_metadata_incomplete` → `production_ready` (the digital contract; physical qualification
+  stays an explicit `unverified` M3 stage).
+
+Verification: tsc clean; build pass; regression_mold / envelope / frame / release-sequence /
+release-collision / final-mesh all pass; smoke:reliability pass; harness Körper + Montagem +
+STEP cases pass with `production_ready`; full 41-case matrix log
+`regression-methods-task4-2026-09-29.log`.
+
+**M0 complete at `7d8f44a`.** Per the plan's release rule, M0 ships as a reliability improvement
+on its own; M1 (method selector, relief tray), M2 (cost/printability) and M3 (physical
+qualification) remain planned work.
+
 ## Open (not yet implemented)
 
 Per the plan status file: open-face relief tray + method selector (M1), strict final-STL

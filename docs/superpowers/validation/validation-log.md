@@ -140,6 +140,32 @@ STEP cases pass with `production_ready`; full 41-case matrix log
 on its own; M1 (method selector, relief tray), M2 (cost/printability) and M3 (physical
 qualification) remain planned work.
 
+## Tasks 5+6 — method selector + open-face relief tray (M1)
+
+Commits `984ef29` (selector), `d4abe31` (tray builder), `b52d1a8` (integration).
+
+- **Selector** (`src/engine/moldMethod.ts`): ranks `open_face_relief` / `full_3d_jacket` /
+  `vessel_core` / `needs_review` from measured, orientation-invariant geometry — dominant planar
+  patch via triangle normals + plane offsets, backing coverage vs projected footprint, depth/span
+  flatness. Role and intent guards return `needs_review` for prebuilt negatives/tooling and
+  unspecified intent (the engine never auto-wraps a mold of the tooling). Calibrated filters from
+  the batch: coverage ≥ 0.3 (perforated cap 0.32 in; poodle 0.35 out via flatness 1.24), flatness
+  ≤ 0.25. Real-model probe matches audit §4 routing: Montagem → open-face; giraffe/Spiderman/
+  poodle → 3D; cap → open-face after calibration.
+- **Tray** (`src/engine/reliefTray.ts`): full-height shadow projection (undercut-safe), gap applied
+  ONCE, contour wall ring with NO roof, deliberate backing, master fused to the plate with a buried
+  foot; through-holes fill and report withdrawable posts when straight. Depth/span > 0.5 throws
+  with the failing property named. Regression: parts valid via export-grade cleanup, ring ≠ box,
+  backing verified, 180 mm plaque wall 115.7 cm³ vs 414.7 cm³ same-size jacket, deep bowl blocked.
+- **Integration**: `planMold` tray phase runs before any jacket candidate when intent is confirmed
+  `front_only` AND the selector tops open-face; tray failure yields to the jacket ladder (ledger
+  entry). Export is method-aware (tray parts + open-top pour/peel assembly). CLI `--cast`/`--role`
+  flags; default stays `all_sides` → jacket, so the 41 frozen classes are unchanged (manifest note).
+- E2E: `flat_plaque --cast front_only` → `method open_face_relief`, all files `valid` in
+  `finalFileAudit`, tray release semantics, tray assembly text.
+
+Verification: build, all 9 regression scripts, smoke:reliability, harness spot-checks — green.
+
 ## Open (not yet implemented)
 
 Per the plan status file: open-face relief tray + method selector (M1), strict final-STL

@@ -6,6 +6,7 @@ import { zipSync, type Zippable } from 'fflate';
 import { writeStlBinary } from './stl';
 import { cleanExportMesh, type MeshAudit } from './clean';
 import { auditSerializedStl, type FinalFileAudit } from './finalAudit';
+import { cm3ToMl } from './cost';
 import type { PlanSource, RejectionEntry, TransformReport } from './planner';
 import type { ManifoldMod } from './manifoldLoader';
 import type { Axis, GenerateParams, MeshArrays } from './types';
@@ -33,6 +34,7 @@ export interface PackageInfo {
   checks: { name: string; pass: boolean; detail: string; hard?: boolean }[];
   crown: { u: number; v: number } | null;
   ventCount: number;
+  trayGeometry?: { fillHeightMm: number; wallHeightMm: number; freeboardMm: number };
   clearanceBand?: { requestedGap: number; min: number; p10: number; p50: number; p90: number; withinBand: boolean };
   printability?: Record<string, {
     bedAreaMm2: number; overhangAreaMm2: number; layerStep: number; layers: number;
@@ -161,8 +163,8 @@ export function buildPrintFiles(deps: {
   // large lantern cap — investigated, never hidden).
   if (parts.siliconeSkin) {
     const skin = finalFileAudit['03_preview/silicone_skin.stl'];
-    if (skin && info.siliconeMl > 0 && Math.abs(skin.netVolumeCm3 * 1000 - info.siliconeMl) / info.siliconeMl > 0.02) {
-      info.warnings = [...info.warnings, `silicone estimate ${info.siliconeMl.toFixed(1)} mL vs serialized skin ${((skin.netVolumeCm3 * 1000)).toFixed(1)} mL (>2% apart — mix against the serialized volume)`];
+    if (skin && info.siliconeMl > 0 && Math.abs(cm3ToMl(skin.netVolumeCm3) - info.siliconeMl) / info.siliconeMl > 0.02) {
+      info.warnings = [...info.warnings, `silicone estimate ${info.siliconeMl.toFixed(1)} mL vs serialized skin ${cm3ToMl(skin.netVolumeCm3).toFixed(1)} mL (>2% apart — review the volume discrepancy before mixing)`];
     }
   }
 
@@ -191,6 +193,7 @@ export function buildPrintFiles(deps: {
     rejectionLedger: info.rejectionLedger ?? [],
     splitAxis: info.axis,
     siliconeMl: Number(info.siliconeMl.toFixed(1)),
+    ...(info.trayGeometry ? { trayGeometry: info.trayGeometry } : {}),
     recommendedPrep: Number((info.siliconeMl * 1.1).toFixed(1)),
     extraction: info.extraction,
     releaseResult: info.release ?? null,
@@ -213,7 +216,9 @@ export function buildPrintFiles(deps: {
     ? [
       `1. Print \`master_base\` (master fused to the tray floor — ${plateOrient}) and \`tray_wall\` (${rimOrient}).`,
       '2. Seat the **tray wall** on the tray floor — a plain contour ring: no seams, no clamps, no sealant.',
-      '3. Pour RTV silicone slowly into the **open tray** until it reaches the wall top — the backing above the relief is deliberate.',
+      info.trayGeometry
+        ? `3. Pour RTV silicone slowly to **${info.trayGeometry.fillHeightMm.toFixed(2)} mm above the tray floor**, leaving **${info.trayGeometry.freeboardMm.toFixed(2)} mm of empty freeboard** below the wall top. Do not fill to the brim.`
+        : '3. Establish the approved silicone fill height above the relief before pouring. Leave empty freeboard below the wall top; the brim is not a fill mark.',
       '4. Cure fully, then lift the cured silicone straight out of the open wall.',
       '5. Peel the master from the silicone. Undercuts or through-hole posts need the demold review — the open-top tray does NOT certify master release.',
     ].join('\n')

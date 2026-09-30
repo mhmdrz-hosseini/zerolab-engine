@@ -11,7 +11,7 @@
 //   outer     = inner ⊕ wall          (contour wall thickness)
 //   base      = extrude(outer, plateT), spans [−plateT, 0] — master fuses to it
 //   wall      = extrude(outer) − extrude(inner), spans [−plateT, wallTop], no roof
-//   silicone  = extrude(inner, wallTop) − master   (the cured-negative preview)
+//   silicone  = extrude(inner, fillTop) − master; freeboard stays empty
 // Through-holes in the master fill with silicone and report as withdrawable
 // posts when straight — never silently filled or cored without a note.
 import { isStatusOk, type ManifoldMod } from './manifoldLoader';
@@ -40,6 +40,7 @@ export interface ReliefTrayResult {
   };
   siliconeMl: number;
   masterTopZ: number;
+  fillTopZ: number;
   wallTopZ: number;
   openFace: true;
   release: { openTop: true; notes: string[] };
@@ -93,7 +94,8 @@ export function buildReliefTray(deps: {
     deps.onProgress?.('Offsetting the contour wall');
     const inner = shadow.offset(gap, 'Round', 2, 48);
     const outer = inner.offset(wall, 'Round', 2, 48);
-    const wallTop = masterTop + backing + freeboard;
+    const fillTop = masterTop + backing;
+    const wallTop = fillTop + freeboard;
 
     // --- solid parts ---
     deps.onProgress?.('Building plate and wall');
@@ -114,7 +116,7 @@ export function buildReliefTray(deps: {
 
     // --- silicone preview: the cured negative resting on the plate ---
     deps.onProgress?.('Building the silicone preview');
-    const cavityPrism = inner.extrude(wallTop);                          // spans [0, wallTop]
+    const cavityPrism = inner.extrude(fillTop);                         // freeboard is air
     const silicone = cavityPrism.subtract(man);
     if (!isStatusOk(silicone)) throw new Error('relief tray: silicone preview failed');
     const siliconeMl = silicone.volume() / 1000;
@@ -172,6 +174,7 @@ export function buildReliefTray(deps: {
       pieces: { basePlate, wall: wallArr, masterBase: masterBaseArr, siliconeSkin: siliconeArr },
       siliconeMl: Number(siliconeMl.toFixed(1)),
       masterTopZ: Number(masterTop.toFixed(2)),
+      fillTopZ: Number(fillTop.toFixed(2)),
       wallTopZ: Number(wallTop.toFixed(2)),
       openFace: true,
       release: {

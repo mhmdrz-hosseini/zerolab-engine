@@ -250,6 +250,7 @@ export async function planMold(req: PlanRequest): Promise<PlanSuccess | PlanFail
               release: trayRelease, method: trayMethod, source: req.source,
               transforms: trayTransforms, rejectionLedger: ledger,
               siliconeMl: tray.siliconeMl,
+              trayGeometry: { fillHeightMm: tray.fillTopZ, wallHeightMm: tray.wallTopZ, freeboardMm: tray.wallTopZ - tray.fillTopZ },
               extraction: { A: 0, B: 0 },
               jacketDim: [trayOuterX, trayOuterY, tray.wallTopZ + 4],
               plateDim: [0, 0, 0],

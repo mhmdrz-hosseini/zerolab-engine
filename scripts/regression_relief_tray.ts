@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { loadManifold, isStatusOk } from '../src/engine/manifoldLoader';
 import { auditMeshArrays, cleanExportMesh } from '../src/engine/clean';
 import { buildReliefTray } from '../src/engine/reliefTray';
+import { runTrayGates } from '../src/engine/gates';
 import type { MeshArrays } from '../src/engine/types';
 
 const mod = await loadManifold();
@@ -71,7 +72,31 @@ const PARAMS = { gap: 4, wall: 4, plateT: 4, freeboard: 5, backing: 4 } as const
   // rigid release: printed parts never trap the cured silicone (no lid exists)
   assert.ok(t.release.openTop, 'release report must state the open-top tray');
   assert.equal(t.siliconeDemold.status, 'unverified', 'master demold stays an explicit unverified stage');
-  console.log(`PASS plaque tray: base ${wallVol.toFixed(1)} cm³, ring ${ringVol.toFixed(1)} cm³, silicone ${t.siliconeMl.toFixed(1)} mL, wall top ${t.wallTopZ.toFixed(1)} vs master ${t.masterTopZ.toFixed(1)}`);
+  // Key Ring: the wall seats ON the plate (never sinks below it), the groove
+  // is really cut, the tongue really stands, and the assembled parts do not
+  // interpenetrate — the pre-pour smear seals the clearance, not press-fit.
+  let wallLo = Infinity;
+  for (let i = 0; i < t.pieces.wall.vertProperties.length / 3; i++) {
+    const z = t.pieces.wall.vertProperties[i * 3 + 2];
+    if (z < wallLo) wallLo = z;
+  }
+  assert.ok(Math.abs(wallLo) <= 0.1, `wall must seat at plate top z=0 (bottom ${wallLo.toFixed(2)})`);
+  assert.ok(t.keyRing.engagementRatio >= 0.6, `groove engagement ${(t.keyRing.engagementRatio * 100).toFixed(0)}% must be ≥60%`);
+  assert.ok(t.keyRing.tongueSurplusMm3 >= 0.6 * t.keyRing.expectedTongueMm3,
+    `tongue surplus ${t.keyRing.tongueSurplusMm3} vs expected ${t.keyRing.expectedTongueMm3} mm³`);
+  assert.ok(t.keyRing.assembledInterferenceMm3 <= 0.01,
+    `assembled wall∩plate interference ${t.keyRing.assembledInterferenceMm3} mm³ must be ~0 (clearance respected)`);
+  assert.ok(t.keyRing.tongueW >= 0.6 && t.keyRing.clearance > 0, 'key ring must have a real cross-section and clearance');
+  // tray hard gates pass on the shipped pieces
+  const gates = runTrayGates({
+    gap: PARAMS.gap, wall: PARAMS.wall, master: plaque,
+    wallPiece: t.pieces.wall, masterBase: t.pieces.masterBase,
+    siliconeMl: t.siliconeMl, masterTopZ: t.masterTopZ, wallTopZ: t.wallTopZ,
+    backing: PARAMS.backing, freeboard: PARAMS.freeboard, keyRing: t.keyRing,
+  });
+  const hardFails = gates.checks.filter((c) => !c.pass && c.hard);
+  assert.deepEqual(hardFails, [], `tray hard gates must pass: ${hardFails.map((c) => `${c.name} (${c.detail})`).join('; ')}`);
+  console.log(`PASS plaque tray: base ${wallVol.toFixed(1)} cm³, ring ${ringVol.toFixed(1)} cm³, silicone ${t.siliconeMl.toFixed(1)} mL, wall top ${t.wallTopZ.toFixed(1)} vs master ${t.masterTopZ.toFixed(1)}; key ring ${t.keyRing.tongueW}×${t.keyRing.tongueH} @${t.keyRing.clearance}mm engagement ${(t.keyRing.engagementRatio * 100).toFixed(0)}%`);
 }
 
 // 2. Through-hole: the hole survives as a silicone post — never filled shut.
@@ -111,6 +136,23 @@ const PARAMS = { gap: 4, wall: 4, plateT: 4, freeboard: 5, backing: 4 } as const
   assert.throws(() => buildReliefTray({ mod, master: deepBowl, params: PARAMS }),
     /depth|backing|ratio|flat/i, 'deep bowl must be rejected with a reason naming the failing property');
   console.log('PASS deep bowl blocked at tray construction');
+}
+
+// 5. Key-ring explicit params: a caller-specified tongue/clearance pair flows
+//    through, stays inside the wall (lands ≥0.3 mm each side), and still gates.
+{
+  const t = buildReliefTray({ mod, master: plaque, params: { ...PARAMS, keyRing: { tongueW: 1.5, clearance: 0.25 } } });
+  assert.equal(t.keyRing.tongueW, 1.5, 'caller tongueW must be respected');
+  assert.equal(t.keyRing.clearance, 0.25, 'caller clearance must be respected');
+  assert.ok(t.keyRing.engagementRatio >= 0.6 && t.keyRing.assembledInterferenceMm3 <= 0.01, 'explicit key ring assembles clean');
+  const gates = runTrayGates({
+    gap: PARAMS.gap, wall: PARAMS.wall, master: plaque,
+    wallPiece: t.pieces.wall, masterBase: t.pieces.masterBase,
+    siliconeMl: t.siliconeMl, masterTopZ: t.masterTopZ, wallTopZ: t.wallTopZ,
+    backing: PARAMS.backing, freeboard: PARAMS.freeboard, keyRing: t.keyRing,
+  });
+  assert.ok(gates.pass, `gates must pass with explicit key ring: ${gates.checks.filter(c => !c.pass && c.hard).map(c => c.name).join('; ')}`);
+  console.log(`PASS explicit key ring 1.5mm @0.25mm: engagement ${(t.keyRing.engagementRatio * 100).toFixed(0)}%, interference ${t.keyRing.assembledInterferenceMm3} mm³`);
 }
 
 console.log('RELIEF TRAY REGRESSIONS PASS');

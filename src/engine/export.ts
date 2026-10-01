@@ -67,7 +67,7 @@ export function buildPrintFiles(deps: {
   // 3-piece packages swap jacket_B for the two sub-panels
   const is3 = !!(parts.jacketB1 && parts.jacketB2);
   const jacketDefs = isTray ? [
-    { name: 'tray wall', file: '02_jacket/tray_wall.stl', mesh: parts.trayWall, note: 'contour wall, NO roof — the open top is the pour face and the peel path' },
+    { name: 'tray wall', file: '02_jacket/tray_wall.stl', mesh: parts.trayWall, note: 'contour wall, NO roof — key-ring groove machined into the seating face; the open top is the pour face and the peel path' },
   ] : is3
     ? [
       { name: 'jacket A', file: '02_jacket/jacket_A.stl', mesh: parts.jacketA, note: 'print rim-down; tongue side is the mating face' },
@@ -114,9 +114,15 @@ export function buildPrintFiles(deps: {
   };
   const plateOrient = orientation('plate');
   const rimOrient = orientation('rim');
+  // The tray wall's seating face carries the key-ring groove: it is a Precision
+  // Surface, so it must NOT be the bed face — first-layer squash would swell
+  // the lands shut and the tongue would no longer enter. Print it flipped.
+  const trayWallOrient = 'print FLIPPED — pour rim on the bed, key-ring groove face up (squash would swell the seating lands shut); brim recommended';
   partDefs[0].note = `${plateOrient} — doll + fused base plate as one piece`;
   for (const j of jacketDefs) {
-    j.note = `${rimOrient}; ${j.note.split('; ')[1] ?? 'mating face per assembly.md'}`;
+    j.note = isTray
+      ? trayWallOrient
+      : `${rimOrient}; ${j.note.split('; ')[1] ?? 'mating face per assembly.md'}`;
   }
 
   // export mesh gate (hard): clean every part, then require a watertight,
@@ -201,7 +207,9 @@ export function buildPrintFiles(deps: {
     printability: info.printability ?? null,
     frame: info.frame ?? null,
     castingMaterial: info.params.material ?? null,
-    hardware: ['6–10 binder clips (25–32 mm), gripping the flat external seam rails'],
+    hardware: isTray
+      ? ['none — Key Ring seats the tray wall; smear the seam with petroleum jelly before pouring']
+      : ['6–10 binder clips (25–32 mm), gripping the flat external seam rails'],
     validation: info.checks,
     meshAudit,
     finalFileAudit,
@@ -211,10 +219,10 @@ export function buildPrintFiles(deps: {
 
   const stepsText = isTray
     ? [
-      `1. Print \`master_base\` (master fused to the tray floor — ${plateOrient}) and \`tray_wall\` (${rimOrient}).`,
-      '2. Seat the **tray wall** on the tray floor — a plain contour ring: no seams, no clamps, no sealant.',
+      `1. Print \`master_base\` (master fused to the tray floor, key-ring tongue up — ${plateOrient}) and \`tray_wall\` (${trayWallOrient}).`,
+      '2. Seat the **tray wall** on the tray floor: the key-ring tongue enters the wall groove all the way around. Then run a thin smear of petroleum jelly (or soft clay) over the seam, inside and out — the key ring locates and seals; the smear backs it up. Printed joints are not liquid-tight on their own.',
       '3. Pour RTV silicone slowly into the **open tray** until it reaches the wall top — the backing above the relief is deliberate.',
-      '4. Cure fully, then lift the cured silicone straight out of the open wall.',
+      '4. Cure fully, then lift the tray wall off the plate (the key ring releases straight up) and lift the cured silicone out of the open tray.',
       '5. Peel the master from the silicone. Undercuts or through-hole posts need the demold review — the open-top tray does NOT certify master release.',
     ].join('\n')
     : [
@@ -236,7 +244,7 @@ export function buildPrintFiles(deps: {
 ${isTray ? `Method: **open-face relief tray** · Silicone needed: **≈ ${info.siliconeMl.toFixed(0)} mL** (prepare ${(info.siliconeMl * 1.1).toFixed(0)} mL)` : `Split axis: **±${info.axis}** · Silicone needed: **≈ ${info.siliconeMl.toFixed(0)} mL** (prepare ${(info.siliconeMl * 1.1).toFixed(0)} mL)`}
 
 ## Hardware
-${isTray ? '- none — the tray wall seats on the tray floor; no clamps or sealant required' : '- 6–10 binder clips sized to the 5 mm seam rail stack; removable seam/base sealant'}
+${isTray ? '- none — the Key Ring seats the tray wall; the petroleum-jelly smear on the seam (step 2) completes the seal' : '- 6–10 binder clips sized to the 5 mm seam rail stack; removable seam/base sealant'}
 
 ## Material & print profiles
 ${materialNote}
@@ -278,6 +286,20 @@ ${info.warnings.map((w) => `- ⚠ ${w}`).join('\n')}` : ''}
         elephant_foot_compensation_mm: 0.2,
         post_process: 'sand/fill if a smooth cast surface is wanted → seal (e.g. Smooth-On print coating) → release agent → pour silicone',
       },
+      ...(isTray ? {
+        tray_wall: {
+          orientation: trayWallOrient,
+          nozzle_mm: 0.4,
+          layer_height_mm: [0.2, 0.24],
+          perimeters: '3 (4 for heavy reuse)',
+          infill_percent: [10, 15],
+          infill_pattern: 'gyroid',
+          support: 'none needed — roofless ring printed groove-up',
+          brim: '5 mm recommended (thin ring on the bed)',
+          seam: 'rear / away from the key ring',
+          elephant_foot_compensation_mm: 0.2,
+        },
+      } : {}),
       jacket_A: {
         orientation: rimOrient,
         nozzle_mm: 0.4,

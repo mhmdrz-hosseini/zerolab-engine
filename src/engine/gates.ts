@@ -10,6 +10,7 @@ import type { MeshArrays } from './types';
 import type { PortsPlan } from './ports';
 import type { MoldFrame } from './split';
 import type { Loops } from './contours';
+import type { KeyRingMetrics } from './reliefTray';
 
 export interface GateCheck { name: string; pass: boolean; detail: string; hard: boolean }
 export interface GateReport {
@@ -306,6 +307,122 @@ export function runGates(opts: {
   if (tightHug && !audit.band.withinBand) {
     warnings.push(`hug band outside audit targets (min ${audit.band.min} p50 ${audit.band.p50} vs gap ${opts.gap}) — acceptable only after a test print`);
   }
+
+  return {
+    pass: checks.filter((c) => c.hard).every((c) => c.pass),
+    checks,
+    warnings,
+    clearanceBand: audit.band,
+  };
+}
+
+/**
+ * Open-face relief tray gates (M1 Task 6, hard-seal revision): the tray has no
+ * split seam to clamp — its only leak path is the wall↔plate joint, so the
+ * Key Ring (tongue on the plate, clearance groove in the wall) carries two
+ * dedicated hard checks on top of the shared crown/volume/clearance set. The
+ * fill path is structural: the wall is a roofless ring by construction.
+ */
+export function runTrayGates(opts: {
+  gap: number;
+  wall: number;
+  master: MeshArrays;
+  wallPiece: MeshArrays;
+  masterBase: MeshArrays;
+  siliconeMl: number;
+  masterTopZ: number;
+  wallTopZ: number;
+  backing: number;
+  freeboard: number;
+  keyRing: KeyRingMetrics;
+}): GateReport {
+  const checks: GateCheck[] = [];
+  const warnings: string[] = [];
+
+  // hard: the wall must land exactly on the plate top plane (z=0) — the tray
+  // frame is always vert=Z with the plate top at 0, so measure the raw z range
+  let wallLo = Infinity, wallHi = -Infinity;
+  for (let i = 0; i < opts.wallPiece.vertProperties.length / 3; i++) {
+    const z = opts.wallPiece.vertProperties[i * 3 + 2];
+    if (z < wallLo) wallLo = z;
+    if (z > wallHi) wallHi = z;
+  }
+  const seatOk = Math.abs(wallLo) <= 0.1;
+  checks.push({
+    name: 'Tray wall seats on the plate',
+    pass: seatOk,
+    hard: true,
+    detail: seatOk
+      ? `wall bottom at ${wallLo.toFixed(2)} mm = plate top 0`
+      : `wall bottom at ${wallLo.toFixed(2)} mm vs plate top 0 — ${wallLo < 0 ? 'sinks below the plate' : 'floats above it'}`,
+  });
+
+  // hard: the key ring is present on BOTH halves and assembles without press:
+  //   • the groove was really cut from the wall ring (≥60% of nominal volume)
+  //   • the tongue was really added on the plate (≥60% of nominal volume)
+  //   • assembled wall∩plate interference ≈ 0 — clearance respected, nothing
+  //     overlaps volumetrically (a reverted flat-on-flat wall fails this)
+  const kr = opts.keyRing;
+  const engageOk = kr.assembledInterferenceMm3 <= 0.01
+    && kr.engagementRatio >= 0.6
+    && kr.tongueSurplusMm3 >= 0.6 * kr.expectedTongueMm3;
+  checks.push({
+    name: 'Key ring engages the plate',
+    pass: engageOk,
+    hard: true,
+    detail: engageOk
+      ? `tongue ${kr.tongueW}×${kr.tongueH} mm @ ${kr.clearance} mm clearance, groove engagement ${(kr.engagementRatio * 100).toFixed(0)}%, assembled interference ${kr.assembledInterferenceMm3} mm³`
+      : `key ring defect: interference ${kr.assembledInterferenceMm3} mm³, groove engagement ${(kr.engagementRatio * 100).toFixed(0)}% (expected ≥60%), tongue surplus ${kr.tongueSurplusMm3}/${kr.expectedTongueMm3} mm³`,
+  });
+
+  // hard: open crown — deliberate backing + pour freeboard above the relief
+  const freeboardOk = opts.backing + opts.freeboard >= 4 && opts.backing + opts.freeboard <= 25;
+  checks.push({
+    name: 'Open crown above the master',
+    pass: freeboardOk,
+    hard: true,
+    detail: `wall top ${opts.wallTopZ.toFixed(1)} mm, master top ${opts.masterTopZ.toFixed(1)} mm, freeboard ${(opts.wallTopZ - opts.masterTopZ).toFixed(1)} mm`,
+  });
+  checks.push({
+    name: 'Air escape through the open crown',
+    pass: freeboardOk,
+    hard: false,
+    detail: 'Open-top tray: the whole wall ring is the vent',
+  });
+
+  // hard: fill reachability is structural for the tray — no roof exists over
+  // the cavity, so every column opens to the pour face (the wall is built as
+  // outer − inner ring, never closed)
+  checks.push({
+    name: 'Fill path reaches the gap',
+    pass: true,
+    hard: true,
+    detail: 'open-top tray: roofless contour wall — every cavity column connects to the pour face',
+  });
+
+  checks.push({
+    name: 'Silicone volume positive',
+    pass: opts.siliconeMl > 1,
+    hard: true,
+    detail: `${opts.siliconeMl.toFixed(1)} mL`,
+  });
+  for (const [i, p] of [opts.wallPiece, opts.masterBase].entries()) {
+    checks.push({
+      name: `Printed part ${i + 1} non-empty`,
+      pass: p.triVerts.length / 3 > 0,
+      hard: true,
+      detail: `${p.triVerts.length / 3} tris`,
+    });
+  }
+
+  const audit = clearanceAudit([opts.wallPiece], opts.master, opts.gap);
+  checks.push({
+    name: 'Master-to-wall clearance audit',
+    pass: audit.ok,
+    hard: false,
+    detail: audit.text,
+  });
+  if (!audit.ok) warnings.push('tray wall comes closer to the master than the silicone gap — inspect the preview');
 
   return {
     pass: checks.filter((c) => c.hard).every((c) => c.pass),

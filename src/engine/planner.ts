@@ -9,10 +9,10 @@
 // reimplement construction. Method selection starts as the generic split
 // jacket — the M1 selector (moldMethod.ts / reliefTray.ts) slots into
 // chooseMethod without changing this pipeline.
-import { buildMoldForAxis, extractionFailText, extractionPass, pickFrame, type AxisAttempt } from './split';
+import { buildMoldForAxis, extractionFailText, extractionPass, frameConstants, pickFrame, type AxisAttempt } from './split';
 import { classifyMethods } from './moldMethod';
 import { buildReliefTray } from './reliefTray';
-import { runGates, type GateCheck } from './gates';
+import { runGates, runTrayGates, type GateCheck } from './gates';
 import { buildPrintFiles, type PrintFiles, type ReleaseReport } from './export';
 import { analyzePieces } from './printability';
 import { isStatusOk, type ManifoldMod } from './manifoldLoader';
@@ -207,9 +207,29 @@ export async function planMold(req: PlanRequest): Promise<PlanSuccess | PlanFail
     if (selector[0].method === 'open_face_relief') {
       req.onProgress?.('Building the open-face relief tray', 0.7);
       try {
+        // frame-scaled tray constants (same scaling law as frameConstants):
+        // the old hardcoded plateT 4 / freeboard 5 over-thickened small trays
+        // and under-floored large ones
+        let lo0 = Infinity, hi0 = -Infinity, lo1 = Infinity, hi1 = -Infinity, lo2 = Infinity, hi2 = -Infinity;
+        for (let i = 0; i < master.vertProperties.length / 3; i++) {
+          const x = master.vertProperties[i * 3], y = master.vertProperties[i * 3 + 1], z = master.vertProperties[i * 3 + 2];
+          if (x < lo0) lo0 = x; if (x > hi0) hi0 = x;
+          if (y < lo1) lo1 = y; if (y > hi1) hi1 = y;
+          if (z < lo2) lo2 = z; if (z > hi2) hi2 = z;
+        }
+        const maxDim = Math.max(hi0 - lo0, hi1 - lo1, hi2 - lo2);
+        const K = frameConstants(maxDim);
+        const s = Math.max(0.2, Math.min(1, maxDim / 150));
+        const trayPlateT = K.plateT;                 // floor 3.5
+        const trayFreeboard = Math.max(4, 5 * s);    // tray ref 5, floor 4
+        const trayBacking = Math.max(4, params.gap);
         const tray = buildReliefTray({
           mod, master,
-          params: { gap: params.gap, wall: params.wall, plateT: 4, backing: Math.max(4, params.gap), freeboard: 5 },
+          params: {
+            gap: params.gap, wall: params.wall, plateT: trayPlateT,
+            backing: trayBacking, freeboard: trayFreeboard,
+            keyRing: { tongueW: K.tongue, clearance: params.clearance },
+          },
         });
         // tray gates: printed parts are single valid solids, silicone positive
         for (const [name, mesh] of [['tray wall', tray.pieces.wall], ['master base', tray.pieces.masterBase]] as const) {
@@ -220,12 +240,22 @@ export async function planMold(req: PlanRequest): Promise<PlanSuccess | PlanFail
           comps.forEach((x) => x.delete());
           m.delete();
         }
+        const trayGates = runTrayGates({
+          gap: params.gap, wall: params.wall, master,
+          wallPiece: tray.pieces.wall, masterBase: tray.pieces.masterBase,
+          siliconeMl: tray.siliconeMl, masterTopZ: tray.masterTopZ, wallTopZ: tray.wallTopZ,
+          backing: trayBacking, freeboard: trayFreeboard, keyRing: tray.keyRing,
+        });
+        const trayHardFails = trayGates.checks.filter((c) => !c.pass && c.hard);
+        if (trayHardFails.length > 0) {
+          ledger.push({ candidate: 'open-face tray', stage: 'gate', reason: trayHardFails.map((c) => `${c.name} (${c.detail})`).join('; ') });
+        } else {
         const trayRelease: ReleaseReport = {
           rigid: [{ part: 'tray wall', direction: 'lift +Z (open top)', pass: true, freeAtMm: 0 }],
           siliconeDemold: tray.siliconeDemold,
         };
         const trayTransforms = transformReport(
-          { frame: { vert: 'Z', base: 0, mid: 0, crown: tray.wallTopZ, pull: 'Z', depth: 'X' }, plateT: 4, axis: 'Z', pieces: null as never, siliconeMl: tray.siliconeMl, ports: { crown: null, vents: [], vAx: 0, u3: 1, v3: 2 }, cavityLoops: [], cavitySections: [], cavity: master, warnings: [], failedAxes: [], siliconeDemold: tray.siliconeDemold, panels: 1, jacketDim: [0, 0, 0], plateDim: [0, 0, 0], extraction: { A: { pass: true, freeAtMm: 0 }, B: null } } as never,
+          { frame: { vert: 'Z', base: 0, mid: 0, crown: tray.wallTopZ, pull: 'Z', depth: 'X' }, plateT: trayPlateT, axis: 'Z', pieces: null as never, siliconeMl: tray.siliconeMl, ports: { crown: null, vents: [], vAx: 0, u3: 1, v3: 2 }, cavityLoops: [], cavitySections: [], cavity: master, warnings: [], failedAxes: [], siliconeDemold: tray.siliconeDemold, panels: 1, jacketDim: [0, 0, 0], plateDim: [0, 0, 0], extraction: { A: { pass: true, freeAtMm: 0 }, B: null } } as never,
           tray.pieces.masterBase,
         );
         const trayMethod = {
@@ -254,21 +284,22 @@ export async function planMold(req: PlanRequest): Promise<PlanSuccess | PlanFail
               jacketDim: [trayOuterX, trayOuterY, tray.wallTopZ + 4],
               plateDim: [0, 0, 0],
               warnings: trayWarnings,
-              checks: [{ name: 'Open-face tray construction', pass: true, hard: true, detail: `wall top ${tray.wallTopZ} mm backs master top ${tray.masterTopZ} mm; silicone ${tray.siliconeMl} mL` }],
+              checks: [...trayGates.checks, { name: 'Open-face tray construction', pass: true, hard: true, detail: `wall top ${tray.wallTopZ} mm backs master top ${tray.masterTopZ} mm; silicone ${tray.siliconeMl} mL` }],
               crown: null, ventCount: 0,
-              frame: { vert: 'Z', base: 0, plateT: 4 },
+              frame: { vert: 'Z', base: 0, plateT: trayPlateT },
             },
           });
           return {
             ok: true, method: trayMethod, source: req.source, transforms: trayTransforms,
             release: trayRelease, rejectionLedger: ledger,
-            pkg: { axis: 'Z', frame: trayTransforms.frame as never, pieces: { jacketA: tray.pieces.wall, jacketB: tray.pieces.wall, basePlate: tray.pieces.basePlate, skin: tray.pieces.siliconeSkin, jacketSolid: tray.pieces.wall }, extraction: { A: { pass: true, freeAtMm: 0 }, B: null }, siliconeDemold: tray.siliconeDemold, panels: 1 as 2, jacketDim: [0, 0, 0], plateDim: [0, 0, 0], plateT: 4, ports: { crown: null, vents: [], vAx: 0, u3: 1, v3: 2 }, siliconeMl: tray.siliconeMl, cavityLoops: [], cavitySections: [], cavity: master, warnings: trayWarnings },
+            pkg: { axis: 'Z', frame: trayTransforms.frame as never, pieces: { jacketA: tray.pieces.wall, jacketB: tray.pieces.wall, basePlate: tray.pieces.basePlate, skin: tray.pieces.siliconeSkin, jacketSolid: tray.pieces.wall }, extraction: { A: { pass: true, freeAtMm: 0 }, B: null }, siliconeDemold: tray.siliconeDemold, panels: 1 as 2, jacketDim: [0, 0, 0], plateDim: [0, 0, 0], plateT: trayPlateT, ports: { crown: null, vents: [], vAx: 0, u3: 1, v3: 2 }, siliconeMl: tray.siliconeMl, cavityLoops: [], cavitySections: [], cavity: master, warnings: trayWarnings },
             masterBase: tray.pieces.masterBase,
-            printability: {}, checks: [], gapEff: params.gap,
-            clearanceBand: undefined, files, warnings: trayWarnings,
+            printability: {}, checks: trayGates.checks, gapEff: params.gap,
+            clearanceBand: trayGates.clearanceBand, files, warnings: trayWarnings,
           };
         } catch (err) {
           ledger.push({ candidate: 'open-face tray', stage: 'export', reason: err instanceof Error ? err.message : String(err) });
+        }
         }
       } catch (err) {
         ledger.push({ candidate: 'open-face tray', stage: 'construction', reason: err instanceof Error ? err.message : String(err) });

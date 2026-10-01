@@ -10,12 +10,17 @@
 //   inner     = shadow ⊕ gap          (the clearance gap, applied ONCE)
 //   outer     = inner ⊕ wall          (contour wall thickness)
 //   base      = extrude(outer, plateT), spans [−plateT, 0] — master fuses to it
-//   wall      = extrude(outer) − extrude(inner), spans [−plateT, wallTop], no roof
+//   key ring  = tongue ring standing ON the plate top, centered in the wall
+//               footprint; the wall's seating face carries the matching
+//               clearance groove, so the wall seats at z=0 located laterally,
+//               stopped vertically, and sealed (the pre-pour smear backs the
+//               key up — printed joints are not liquid-tight alone)
+//   wall      = extrude(outer) − extrude(inner) − groove, spans [0, wallTop], no roof
 //   silicone  = extrude(inner, wallTop) − master   (the cured-negative preview)
 // Through-holes in the master fill with silicone and report as withdrawable
 // posts when straight — never silently filled or cored without a note.
 import { isStatusOk, type ManifoldMod } from './manifoldLoader';
-import type { CS } from './split';
+import { frameConstants, type CS } from './split';
 import type { MeshArrays } from './types';
 
 export interface ReliefTrayParams {
@@ -24,6 +29,25 @@ export interface ReliefTrayParams {
   plateT: number;   // support plate thickness (mm)
   backing: number;  // deliberate silicone above the highest feature (mm)
   freeboard: number;// pour margin above the backing (mm)
+  keyRing?: {       // wall↔plate joint; default = frameConstants tongue @ 0.35 mm
+    tongueW: number;  // tongue cross-section width AND height (mm, square)
+    clearance: number;// groove fit clearance from the joint-fit ladder (mm)
+  };
+}
+
+/** Measured integrity of the wall↔plate key ring, in the assembled position —
+ *  feeds the hard tray gates (Key Engagement, Seat Contact). */
+export interface KeyRingMetrics {
+  tongueW: number;
+  tongueH: number;
+  clearance: number;
+  grooveDepth: number;
+  expectedGrooveMm3: number;   // nominal groove cavity volume
+  grooveDeficitMm3: number;    // material actually removed from the wall ring
+  engagementRatio: number;     // grooveDeficit / expectedGroove (1 = full)
+  expectedTongueMm3: number;   // nominal tongue volume above the plate
+  tongueSurplusMm3: number;    // material actually added on top of the plate
+  assembledInterferenceMm3: number; // wall∩plate volume — must be ~0 (clearance respected)
 }
 
 export interface ThroughHole {
@@ -45,6 +69,7 @@ export interface ReliefTrayResult {
   release: { openTop: true; notes: string[] };
   siliconeDemold: { status: 'unverified'; note: string };
   throughHoles: ThroughHole[];
+  keyRing: KeyRingMetrics;
   warnings: string[];
 }
 
@@ -96,25 +121,73 @@ export function buildReliefTray(deps: {
     const wallTop = masterTop + backing + freeboard;
 
     // --- solid parts ---
-    deps.onProgress?.('Building plate and wall');
-    const plate = outer.extrude(plateT).translate(0, 0, -plateT);       // spans [−plateT, 0]
-    const wallOuterPrism = outer.extrude(wallTop + plateT).translate(0, 0, -plateT);
-    const wallInnerPrism = inner.extrude(wallTop + plateT).translate(0, 0, -plateT);
-    const wallSolid = wallOuterPrism.subtract(wallInnerPrism);           // ring, NO roof
+    deps.onProgress?.('Building plate, key ring and wall');
+    const junk: { delete(): void }[] = [];
+    const track = <T extends { delete(): void }>(x: T): T => { junk.push(x); return x; };
+
+    // Key ring: an upstanding tongue on the plate, centered in the wall
+    // footprint, with the matching clearance groove cut into the wall's
+    // seating face. The key faces take the lateral load, the groove ceiling
+    // is the vertical stop, and the groove clearance is what the pre-pour
+    // smear backs up. The tongue cross-section clamps so ≥0.3 mm of land
+    // remains on each side of the groove.
+    const krClearance = params.keyRing?.clearance ?? 0.35;
+    const Kt = frameConstants(Math.max(spanX, spanY, masterTop));
+    const tongueW = Math.max(0.6, Math.min(params.keyRing?.tongueW ?? Kt.tongue, Math.max(0.6, wall - 2 * krClearance - 0.6)));
+    const tongueH = tongueW; // square cross-section
+    const grooveDepth = tongueH + krClearance; // wall bottom rests on the plate top
+    const midWall = wall / 2;
+    const tongueInDelta = midWall - tongueW / 2;
+    if (tongueInDelta <= 0.05) throw new Error('relief tray: wall too thin for the key ring — increase the wall thickness');
+    const tongueOuterCS = track(inner.offset(midWall + tongueW / 2, 'Round', 2, 48));
+    const tongueInnerCS = track(inner.offset(tongueInDelta, 'Round', 2, 48));
+    const tongueCS = track(tongueOuterCS.subtract(tongueInnerCS));
+    const grooveOuterCS = track(tongueOuterCS.offset(krClearance, 'Round', 2, 48));
+    const grooveInnerCS = track(tongueInnerCS.offset(-krClearance, 'Round', 2, 48));
+    const grooveCS = track(grooveOuterCS.subtract(grooveInnerCS));
+    const tongueSolid = track(tongueCS.extrude(tongueH + 0.5).translate(0, 0, -0.5));   // fuses 0.5 into the plate
+    const grooveSolid = track(grooveCS.extrude(grooveDepth + 0.5).translate(0, 0, -0.5)); // opens through the seating face
+
+    const plate = track(outer.extrude(plateT).translate(0, 0, -plateT));                // spans [−plateT, 0]
+    const plateTongue = track(plate.add(tongueSolid));
+    const wallOuterPrism = track(outer.extrude(wallTop));                               // spans [0, wallTop] —
+    const wallInnerPrism = track(inner.extrude(wallTop));                               // seats ON the plate, no overlap
+    const wallRing = track(wallOuterPrism.subtract(wallInnerPrism));                    // ring, NO roof
+    const wallSolid = track(wallRing.subtract(grooveSolid));
+
+    // key-ring integrity, measured in the assembled position (feeds the hard gates)
+    const expectedGrooveMm3 = grooveCS.area() * grooveDepth;
+    const expectedTongueMm3 = tongueCS.area() * tongueH;
+    const grooveDeficitMm3 = wallRing.volume() - wallSolid.volume();
+    const tongueSurplusMm3 = plateTongue.volume() - plate.volume();
+    const interferenceM = track(plateTongue.intersect(wallSolid));
+    const keyRing: KeyRingMetrics = {
+      tongueW: Number(tongueW.toFixed(2)),
+      tongueH,
+      clearance: krClearance,
+      grooveDepth: Number(grooveDepth.toFixed(2)),
+      expectedGrooveMm3: Number(expectedGrooveMm3.toFixed(2)),
+      grooveDeficitMm3: Number(grooveDeficitMm3.toFixed(2)),
+      engagementRatio: Number(Math.min(1, grooveDeficitMm3 / Math.max(1e-9, expectedGrooveMm3)).toFixed(3)),
+      expectedTongueMm3: Number(expectedTongueMm3.toFixed(2)),
+      tongueSurplusMm3: Number(tongueSurplusMm3.toFixed(2)),
+      assembledInterferenceMm3: Number(Math.max(0, interferenceM.volume()).toFixed(3)),
+    };
 
     // --- master fused to the plate (buried foot, same trick as the jacket) ---
     deps.onProgress?.('Fusing the master to the plate');
     const footCS = man.slice(0.3);
+    if (footCS) junk.push(footCS);
     const foot = footCS
-      ? footCS.extrude(0.32).translate(0, 0, -0.01)
+      ? track(footCS.extrude(0.32).translate(0, 0, -0.01))
       : null;
-    const plateMan = foot ? plate.add(foot) : plate;
+    const plateMan = foot ? plateTongue.add(foot) : plateTongue;
     const masterBase = man.add(plateMan);
     if (!isStatusOk(masterBase)) throw new Error('relief tray: master/base union failed');
 
     // --- silicone preview: the cured negative resting on the plate ---
     deps.onProgress?.('Building the silicone preview');
-    const cavityPrism = inner.extrude(wallTop);                          // spans [0, wallTop]
+    const cavityPrism = track(inner.extrude(wallTop));                   // spans [0, wallTop]
     const silicone = cavityPrism.subtract(man);
     if (!isStatusOk(silicone)) throw new Error('relief tray: silicone preview failed');
     const siliconeMl = silicone.volume() / 1000;
@@ -161,12 +234,16 @@ export function buildReliefTray(deps: {
       m.delete();
       return out;
     };
+    // manifolds consumed by toArrays must not be freed twice
+    const consume = (x: { delete(): void }) => { const i = junk.indexOf(x); if (i >= 0) junk.splice(i, 1); };
     const basePlate = toArrays(plateMan);
+    consume(plateMan);
     const wallArr = toArrays(wallSolid);
+    consume(wallSolid);
     const masterBaseArr = toArrays(masterBase);
     const siliconeArr = toArrays(silicone);
-    // free remaining intermediates
-    [shadow, inner, outer, wallOuterPrism, wallInnerPrism, cavityPrism, foot].forEach((x) => { try { x?.delete(); } catch { /* freed */ } });
+    junk.push(shadow as CS, inner, outer);
+    for (const x of junk) { try { x.delete(); } catch { /* freed */ } }
 
     return {
       pieces: { basePlate, wall: wallArr, masterBase: masterBaseArr, siliconeSkin: siliconeArr },
@@ -178,6 +255,7 @@ export function buildReliefTray(deps: {
         openTop: true,
         notes: [
           'the tray has no roof — the cured silicone lifts straight up out of the wall',
+          'the wall seats into the plate key ring: lift the wall off after cure and reuse it; smear the seam before pouring',
           'printed wall/base never trap the silicone rigidly; only the master/silicone interface needs the demold review',
         ],
       },
@@ -186,6 +264,7 @@ export function buildReliefTray(deps: {
         note: 'Pulling the master out of the cured silicone (undercuts, tear strain) is a flexible-material review and is NOT certified by the open-top tray geometry.',
       },
       throughHoles,
+      keyRing,
       warnings,
     };
   } finally {

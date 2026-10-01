@@ -23,6 +23,16 @@ const FITS = [
 ] as const;
 type FitId = (typeof FITS)[number]['id'];
 
+// Mold family (Task 5 contract, CLI --cast): front-only routes a flat-back
+// master to the open-face relief tray (Key Ring wall+plate, reusable form);
+// auto keeps the generic split-jacket ladder. The planner's selector still
+// guards the tray route — a deep/undercut front fails over to jackets.
+const CASTS = [
+  { id: 'auto', labelKey: 'cast.auto', hintKey: 'cast.hint.auto' },
+  { id: 'front_only', labelKey: 'cast.front', hintKey: 'cast.hint.front' },
+] as const;
+type CastId = (typeof CASTS)[number]['id'];
+
 // Envelope hug mode (P3): the pull-clearance window fattens the cavity so the
 // jacket slides off rigidly; half-gap measured extraction-safe on the corpus
 // with ~5–10% silicone savings and a tighter median hug.
@@ -91,6 +101,7 @@ export function GeneratePanel() {
   const t = useT();
   const [preset, setPreset] = useState<PresetId>('standard');
   const [fit, setFit] = useState<FitId>('standard');
+  const [cast, setCast] = useState<CastId>('auto');
   const [envelope, setEnvelope] = useState<EnvelopeId>('full');
   const [wall, setWall] = useState<WallId>('standard');
   const [ribs, setRibs] = useState(false);
@@ -139,6 +150,7 @@ export function GeneratePanel() {
       ribs,
       material,
       fit: f.id,
+      cast,
     };
   };
   const effMasterMm = maxMasterDim * k;
@@ -237,6 +249,13 @@ export function GeneratePanel() {
       {smallHint && <div className="hint dim" style={{ color: 'var(--warn)', margin: '4px 0 0' }}>{t('size.smallHint', { g: effGap })}</div>}
       <div className="hint dim" style={{ margin: '2px 0 0', fontSize: 10.5 }}>{t('size.range')}</div>
 
+      <div className="chips">
+        {CASTS.map((x) => (
+          <button key={x.id} className={`chip${cast === x.id ? ' on' : ''}`} onClick={() => setCast(x.id)} disabled={busy} title={t(x.hintKey)}>
+            {t(x.labelKey)}
+          </button>
+        ))}
+      </div>
       <div className="chips">
         {PRESETS.map((x) => (
           <button key={x.id} className={`chip${preset === x.id ? ' on' : ''}`} onClick={() => setPreset(x.id)} disabled={busy}>

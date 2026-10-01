@@ -59,6 +59,9 @@ export interface GenerateParams {
   fit?: 'resin' | 'calibrated' | 'standard' | 'loose'; // joint-fit selection — the only
                        // print-process distinction the worker knows: resin keeps the
                        // 2 mm wall capability, every FDM fit is floored at 3 mm
+  cast?: 'auto' | 'front_only'; // mold-family intent (CLI --cast): front_only routes a
+                       // flat-back master to the open-face relief tray (Key Ring
+                       // wall+plate); auto = the generic split-jacket ladder
 }
 
 // Functional manufacturing minimums (reliability brief §1/§2) — applied AFTER

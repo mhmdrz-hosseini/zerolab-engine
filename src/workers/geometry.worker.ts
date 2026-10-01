@@ -228,6 +228,13 @@ async function generate(params: GenerateParams): Promise<void> {
       engineCommit: 'browser-runtime',
     },
     ports: false,
+    // mold-family intent from the panel's cast chips (same mapping as the CLI):
+    // front_only routes a flat-back master to the tray branch (gates in
+    // runTrayGates); everything else keeps the generic split-jacket ladder
+    castingIntent: {
+      inputRole: 'positive_master' as const,
+      requiredSurfaces: params.cast === 'front_only' ? 'front_only' as const : 'all_sides' as const,
+    },
     // export prep (cleanup + serialized-bytes audit) runs INSIDE the candidate
     // loop exactly as in the CLI — a candidate whose package would fail the
     // final audit yields to the next one before the user ever sees it

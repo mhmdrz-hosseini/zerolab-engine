@@ -13,6 +13,26 @@ import type { CastingIntent, MeshArrays } from './types';
 export type { CastingIntent, InputRole, RequiredSurfaces } from './types';
 export type MoldMethod = 'open_face_relief' | 'full_3d_jacket' | 'vessel_core' | 'needs_review';
 
+/** Best-fit DEFAULT intent for a freshly ingested master (UX: the app
+ *  suggests, the user confirms or overrides). Derived from the same measured
+ *  coverage/flatness the family selector uses — never from the filename or
+ *  the original Z. A vessel is NEVER suggested: hollowness alone cannot know
+ *  the user wants the interior cast — that intent must come from the user
+ *  (the selector then routes it to core planning or review). */
+export function suggestIntent(mesh: MeshArrays): {
+  surfaces: 'front_only' | 'all_sides';
+  family: 'open_face_relief' | 'full_3d_jacket';
+  reason: string;
+  measures: MethodCandidate['measures'];
+} {
+  const asFront = classifyMethods(mesh, { inputRole: 'positive_master', requiredSurfaces: 'front_only' })[0];
+  if (asFront.method === 'open_face_relief') {
+    return { surfaces: 'front_only', family: 'open_face_relief', reason: asFront.reason, measures: asFront.measures };
+  }
+  const asAll = classifyMethods(mesh, { inputRole: 'positive_master', requiredSurfaces: 'all_sides' })[0];
+  return { surfaces: 'all_sides', family: 'full_3d_jacket', reason: asAll.reason, measures: asAll.measures };
+}
+
 export interface MethodCandidate {
   method: MoldMethod;
   score: number;

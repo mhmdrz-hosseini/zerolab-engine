@@ -6,6 +6,7 @@ import { zipSync, type Zippable } from 'fflate';
 import { writeStlBinary } from './stl';
 import { cleanExportMesh, type MeshAudit } from './clean';
 import { auditSerializedStl, type FinalFileAudit } from './finalAudit';
+import { cm3ToMl } from './cost';
 import type { PlanSource, RejectionEntry, TransformReport } from './planner';
 import type { ManifoldMod } from './manifoldLoader';
 import type { Axis, GenerateParams, MeshArrays } from './types';
@@ -33,12 +34,36 @@ export interface PackageInfo {
   checks: { name: string; pass: boolean; detail: string; hard?: boolean }[];
   crown: { u: number; v: number } | null;
   ventCount: number;
+  trayGeometry?: { fillHeightMm: number; wallHeightMm: number; freeboardMm: number };
+  topologyRepair?: TopologyRepairRecord; // bounded silicone-skin repair evidence (V3 pinched-edge fix)
   clearanceBand?: { requestedGap: number; min: number; p10: number; p50: number; p90: number; withinBand: boolean };
   printability?: Record<string, {
     bedAreaMm2: number; overhangAreaMm2: number; layerStep: number; layers: number;
     worstBands: { zLo: number; zHi: number; areaMm2: number }[];
   }>;
   frame?: { vert: Axis; base: number; plateT: number }; // mold vertical + base plane — drives the slicer orientation guidance
+}
+
+/** Evidence record for the bounded silicone-skin topology repair (V3 fidelity
+ *  rule: displacement ≤ min(0.05 mm, finestProtectedFeatureMm/10)). The repair
+ *  is only adopted when the exact kernel path leaves the SERIALIZED bytes
+ *  pinched and a bounded candidate makes them valid; the rigid blockers are
+ *  re-cut afterwards so the cavity surface is exact and no silicone remains
+ *  inside a rigid part. */
+export interface TopologyRepairRecord {
+  part: string;
+  applied: boolean;              // false = the exact pass alone serialized valid
+  toleranceMm: number;           // adopted kernel simplification tolerance
+  budgetMm: number;              // min(0.05, finestProtectedFeatureMm / 10)
+  finestProtectedFeatureMm: number;
+  featureBasis: string;          // how the feature size was established
+  recutBlockers: boolean;        // rigid blockers re-cut after the simplification
+  volumeBeforeMm3: number;       // exact CSG skin (post contact reconciliation)
+  volumeAfterMm3: number;
+  volumeDeltaMm3: number;
+  blockerOverlapAfterMm3: number;
+  overlapQuantizationBoundMm3: number;
+  ladder: { toleranceMm: number; recut: boolean; verdict: string; pinchedEdges: number; blockerOverlapMm3: number }[];
 }
 
 export interface PrintFiles {
@@ -167,8 +192,8 @@ export function buildPrintFiles(deps: {
   // large lantern cap — investigated, never hidden).
   if (parts.siliconeSkin) {
     const skin = finalFileAudit['03_preview/silicone_skin.stl'];
-    if (skin && info.siliconeMl > 0 && Math.abs(skin.netVolumeCm3 * 1000 - info.siliconeMl) / info.siliconeMl > 0.02) {
-      info.warnings = [...info.warnings, `silicone estimate ${info.siliconeMl.toFixed(1)} mL vs serialized skin ${((skin.netVolumeCm3 * 1000)).toFixed(1)} mL (>2% apart — mix against the serialized volume)`];
+    if (skin && info.siliconeMl > 0 && Math.abs(cm3ToMl(skin.netVolumeCm3) - info.siliconeMl) / info.siliconeMl > 0.02) {
+      info.warnings = [...info.warnings, `silicone estimate ${info.siliconeMl.toFixed(1)} mL vs serialized skin ${cm3ToMl(skin.netVolumeCm3).toFixed(1)} mL (>2% apart — review the volume discrepancy before mixing)`];
     }
   }
 
@@ -197,6 +222,7 @@ export function buildPrintFiles(deps: {
     rejectionLedger: info.rejectionLedger ?? [],
     splitAxis: info.axis,
     siliconeMl: Number(info.siliconeMl.toFixed(1)),
+    ...(info.trayGeometry ? { trayGeometry: info.trayGeometry } : {}),
     recommendedPrep: Number((info.siliconeMl * 1.1).toFixed(1)),
     extraction: info.extraction,
     releaseResult: info.release ?? null,
@@ -204,6 +230,7 @@ export function buildPrintFiles(deps: {
     basePlateMm: info.plateDim.map((d) => Number(d.toFixed(1))),
     ports: { crown: null as null, ventCount: info.ventCount },
     clearanceBand: info.clearanceBand ?? null,
+    topologyRepair: info.topologyRepair ?? null,
     printability: info.printability ?? null,
     frame: info.frame ?? null,
     castingMaterial: info.params.material ?? null,
@@ -221,7 +248,9 @@ export function buildPrintFiles(deps: {
     ? [
       `1. Print \`master_base\` (master fused to the tray floor, key-ring tongue up — ${plateOrient}) and \`tray_wall\` (${trayWallOrient}).`,
       '2. Seat the **tray wall** on the tray floor: the key-ring tongue enters the wall groove all the way around. Then run a thin smear of petroleum jelly (or soft clay) over the seam, inside and out — the key ring locates and seals; the smear backs it up. Printed joints are not liquid-tight on their own.',
-      '3. Pour RTV silicone slowly into the **open tray** until it reaches the wall top — the backing above the relief is deliberate.',
+      info.trayGeometry
+        ? `3. Pour RTV silicone slowly to **${info.trayGeometry.fillHeightMm.toFixed(2)} mm above the tray floor**, leaving **${info.trayGeometry.freeboardMm.toFixed(2)} mm of empty freeboard** below the wall top. Do not fill to the brim — the backing above the relief is deliberate, the freeboard is not.`
+        : '3. Pour RTV silicone slowly into the **open tray** until it reaches the wall top — the backing above the relief is deliberate.',
       '4. Cure fully, then lift the tray wall off the plate (the key ring releases straight up) and lift the cured silicone out of the open tray.',
       '5. Peel the master from the silicone. Undercuts or through-hole posts need the demold review — the open-top tray does NOT certify master release.',
     ].join('\n')

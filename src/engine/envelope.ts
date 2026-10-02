@@ -214,11 +214,42 @@ export function buildEnvelope(
     return toOriginal(solid);
   };
 
-  const cavity = loftPolygons(ringPolygons);
-  const outer = loftPolygons(ringPolygons.map((r) => offsetPolygons(r, wall * 1.45)));
-  const release = loftPolygons(ringPolygons.map((r) => offsetPolygons(r, -0.02)));
-  const clearance = loftPolygons(ringPolygons.map((r) => offsetPolygons(r, -1.0)));
+  // A pinched/self-intersecting ring (e.g. a fused multi-shell master whose
+  // parts touch) breaks ear-clipped caps into a non-manifold loft. Retry the
+  // whole loft once with per-ring convex hulls — guaranteed simple rings at
+  // the cost of a locally convexized cavity; downstream gates still verify
+  // the master is fully contained.
+  const convexHull2D = (pts: [number, number][]): [number, number][] => {
+    const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    if (p.length < 3) return p;
+    const cross = (o: [number, number], a: [number, number], b: [number, number]) =>
+      (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lower: [number, number][] = [];
+    for (const q of p) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop(); lower.push(q); }
+    const upper: [number, number][] = [];
+    for (let i = p.length - 1; i >= 0; i--) { const q = p[i]; while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop(); upper.push(q); }
+    lower.pop(); upper.pop();
+    return lower.concat(upper);
+  };
+  const hulledRings = (): [number, number][][] =>
+    ringPolygons.map((r) => {
+      const h = convexHull2D(r);
+      return h.length >= 3 ? resampleLoop(h) : r;
+    });
+  const loftSafe = (xf: (r: [number, number][]) => [number, number][]): ManifoldInstance => {
+    try {
+      return loftPolygons(ringPolygons.map(xf));
+    } catch (firstErr) {
+      const solid = loftPolygons(hulledRings().map(xf));
+      console.warn(`envelope loft was non-manifold (${firstErr instanceof Error ? firstErr.message : firstErr}); rebuilt with convex-hull rings — the cavity is locally convexized at the pinched bands`);
+      return solid;
+    }
+  };
 
+  const cavity = loftSafe((r) => r);
+  const outer = loftSafe((r) => offsetPolygons(r, wall * 1.45));
+  const release = loftSafe((r) => offsetPolygons(r, -0.02));
+  const clearance = loftSafe((r) => offsetPolygons(r, -1.0));
   // plate bases: the FULL master shadow (outer boundaries only) and the widest
   // ring, in (u,w) coordinates. Multi-loop on purpose: a flat text/sign master
   // slices into disjoint letter islands — taking the single largest loop

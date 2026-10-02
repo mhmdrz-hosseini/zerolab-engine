@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import type { GenerateParams, GenerateResult } from '../engine/types';
+import { useEffect, useRef, useState } from 'react';
+import type { CastingIntent, GenerateParams, GenerateResult } from '../engine/types';
 import { functionalFloors } from '../engine/types';
 import { frameConstants } from '../engine/split';
 import { useStore } from '../state/store';
@@ -22,16 +22,6 @@ const FITS = [
   { id: 'loose', labelKey: 'fit.loose', wall: 5, clearance: 0.45, hintKey: 'fit.hint.loose' },
 ] as const;
 type FitId = (typeof FITS)[number]['id'];
-
-// Mold family (Task 5 contract, CLI --cast): front-only routes a flat-back
-// master to the open-face relief tray (Key Ring wall+plate, reusable form);
-// auto keeps the generic split-jacket ladder. The planner's selector still
-// guards the tray route — a deep/undercut front fails over to jackets.
-const CASTS = [
-  { id: 'auto', labelKey: 'cast.auto', hintKey: 'cast.hint.auto' },
-  { id: 'front_only', labelKey: 'cast.front', hintKey: 'cast.hint.front' },
-] as const;
-type CastId = (typeof CASTS)[number]['id'];
 
 // Envelope hug mode (P3): the pull-clearance window fattens the cavity so the
 // jacket slides off rigidly; half-gap measured extraction-safe on the corpus
@@ -101,12 +91,36 @@ export function GeneratePanel() {
   const t = useT();
   const [preset, setPreset] = useState<PresetId>('standard');
   const [fit, setFit] = useState<FitId>('standard');
-  const [cast, setCast] = useState<CastId>('auto');
   const [envelope, setEnvelope] = useState<EnvelopeId>('full');
   const [wall, setWall] = useState<WallId>('standard');
   const [ribs, setRibs] = useState(false);
   const [material, setMaterial] = useState<'silicone' | 'hotWax'>('silicone');
   const [targetCm, setTargetCm] = useState<number | null>(null); // null = track actual
+  const [inputRole, setInputRole] = useState<CastingIntent['inputRole']>('unknown');
+  const [requiredSurfaces, setRequiredSurfaces] = useState<CastingIntent['requiredSurfaces']>('unspecified');
+  const [requestedFamily, setRequestedFamily] = useState<NonNullable<CastingIntent['requestedFamily']>>('auto');
+  const [backingSide, setBackingSide] = useState('auto');
+  const [multiBodyHandling, setMultiBodyHandling] = useState<NonNullable<CastingIntent['multiBodyHandling']>>('auto_review');
+  const suggestion = useStore((s) => s.suggestion);
+  const appliedRef = useRef(false);
+  // UX: the algorithm proposes the best-fit intent for the ingested master the
+  // moment analysis lands; the selectors pre-fill with it and the user can
+  // change anything. Only untouched (still-default) fields are filled, so a
+  // choice the user already made is never overwritten.
+  useEffect(() => {
+    if (!suggestion || appliedRef.current) return;
+    appliedRef.current = true;
+    setInputRole((v) => (v === 'unknown' ? 'positive_master' : v));
+    setRequiredSurfaces((v) => (v === 'unspecified' ? suggestion.surfaces : v));
+    setRequestedFamily((v) => (v === 'auto' ? suggestion.family : v));
+    const n = suggestion.backingNormalSource;
+    const side = Math.abs(n[0]) > 0.5 ? (n[0] < 0 ? '-X' : '+X')
+      : Math.abs(n[1]) > 0.5 ? (n[1] < 0 ? '-Y' : '+Y')
+      : n[2] < 0 ? '-Z' : '+Z';
+    setBackingSide((v) => (v === 'auto' ? side : v));
+    setMultiBodyHandling((v) => (v === 'auto_review' ? suggestion.multiBodyHandling : v));
+  }, [suggestion]);
+  const suggestedHere = !!suggestion && inputRole !== 'unknown' && requiredSurfaces !== 'unspecified';
 
   if (!report) return null;
   const p = PRESETS.find((x) => x.id === preset)!;
@@ -150,7 +164,6 @@ export function GeneratePanel() {
       ribs,
       material,
       fit: f.id,
-      cast,
     };
   };
   const effMasterMm = maxMasterDim * k;
@@ -161,12 +174,19 @@ export function GeneratePanel() {
 
   const params: GenerateParams = paramsFor(k);
   const busy = phase === 'busy';
+  const signedNormals: Record<string, [number, number, number]> = {
+    '-X': [-1, 0, 0], '+X': [1, 0, 0], '-Y': [0, -1, 0], '+Y': [0, 1, 0], '-Z': [0, 0, -1], '+Z': [0, 0, 1],
+  };
+  const generateWithIntent = (nextParams: GenerateParams) => generate(nextParams, {
+    inputRole, requiredSurfaces, requestedFamily, multiBodyHandling,
+    ...(backingSide === 'auto' ? {} : { backingNormalSource: signedNormals[backingSide] }),
+  });
 
   const commitSize = (cmValue: number) => {
     if (busy) return;
     // pin the current split axis: resizing must not rotate the mold
     const kk = solveK(cmValue * 10);
-    generate({
+    generateWithIntent({
       ...paramsFor(kk),
       masterScale: kk,
       ...(result ? { splitAxis: result.axis } : {}),
@@ -187,6 +207,58 @@ export function GeneratePanel() {
   return (
     <section className="panel">
       <div className="panel-title">{t('gen.title')}</div>
+      {suggestedHere ? (
+        <div className="hint dim">
+          {lang === 'fa'
+            ? 'تنظیمات پیشنهادی بر پایه هندسه مدل پر شده — در صورت نیاز تغییر دهید. '
+            : 'Suggested settings filled from the model\u2019s geometry — change anything if your intent differs. '}
+          <EngineText text={suggestion!.reason} />
+        </div>
+      ) : (
+        <div className="hint dim">{lang === 'fa' ? 'ابتدا نقش فایل و سطوح مورد نیاز قطعه را تأیید کنید.' : 'Confirm what the file represents and which casting surfaces must be reproduced.'}</div>
+      )}
+      <label className="size-row">
+        <span className="size-label">{lang === 'fa' ? 'نقش فایل' : 'Input role'}</span>
+        <select value={inputRole} disabled={busy} onChange={e => setInputRole(e.target.value as CastingIntent['inputRole'])}>
+          <option value="unknown">{lang === 'fa' ? 'نیاز به انتخاب' : 'Choose role'}</option>
+          <option value="positive_master">{lang === 'fa' ? 'مدل مثبت قطعه' : 'Positive master'}</option>
+          <option value="prebuilt_negative_mold">{lang === 'fa' ? 'قالب منفی آماده' : 'Existing negative mold'}</option>
+          <option value="tooling">{lang === 'fa' ? 'ابزار یا جیگ' : 'Tooling or jig'}</option>
+        </select>
+      </label>
+      <label className="size-row">
+        <span className="size-label">{lang === 'fa' ? 'سطوح ریخته‌گری' : 'Casting surfaces'}</span>
+        <select value={requiredSurfaces} disabled={busy} onChange={e => setRequiredSurfaces(e.target.value as CastingIntent['requiredSurfaces'])}>
+          <option value="unspecified">{lang === 'fa' ? 'نیاز به انتخاب' : 'Choose surfaces'}</option>
+          <option value="front_only">{lang === 'fa' ? 'فقط نمای جلو؛ پشت باز مجاز' : 'Front only; open back allowed'}</option>
+          <option value="all_sides">{lang === 'fa' ? 'همه طرف قطعه' : 'All sides'}</option>
+          <option value="inner_and_outer">{lang === 'fa' ? 'داخل و خارج ظرف' : 'Inside and outside vessel'}</option>
+        </select>
+      </label>
+      <label className="size-row">
+        <span className="size-label">{lang === 'fa' ? 'روش قالب' : 'Mold family'}</span>
+        <select value={requestedFamily} disabled={busy} onChange={e => setRequestedFamily(e.target.value as NonNullable<CastingIntent['requestedFamily']>)}>
+          <option value="auto">{lang === 'fa' ? 'انتخاب بر پایه هندسه و هدف' : 'Select from geometry and intent'}</option>
+          <option value="open_face_relief">{lang === 'fa' ? 'سینی برجسته باز' : 'Open-face relief tray'}</option>
+          <option value="full_3d_jacket">{lang === 'fa' ? 'قالب سه‌بعدی چندبخشی' : 'Full 3D split jacket'}</option>
+          <option value="vessel_core">{lang === 'fa' ? 'قالب ظرف با هسته' : 'Vessel with core — review'}</option>
+        </select>
+      </label>
+      <label className="size-row">
+        <span className="size-label">{lang === 'fa' ? 'سمت پایه' : 'Backing side'}</span>
+        <select value={backingSide} disabled={busy} onChange={e => setBackingSide(e.target.value)}>
+          <option value="auto">{lang === 'fa' ? 'تشخیص خودکار؛ اگر مبهم بود توقف' : 'Auto; review if ambiguous'}</option>
+          {Object.keys(signedNormals).map(side => <option key={side} value={side}>{side}</option>)}
+        </select>
+      </label>
+      <label className="size-row">
+        <span className="size-label">{lang === 'fa' ? 'چند قطعه' : 'Multiple solids'}</span>
+        <select value={multiBodyHandling} disabled={busy} onChange={e => setMultiBodyHandling(e.target.value as NonNullable<CastingIntent['multiBodyHandling']>)}>
+          <option value="auto_review">{lang === 'fa' ? 'توقف و بررسی' : 'Stop for review'}</option>
+          <option value="fuse_overlapping">{lang === 'fa' ? 'اتصال پوسته‌های هم‌پوشان' : 'Fuse overlapping shells into one cast'}</option>
+          <option value="separate_casts">{lang === 'fa' ? 'قطعات ریخته‌گری جداگانه' : 'Separate cast pieces — review'}</option>
+        </select>
+      </label>
 
       <div className="size-row">
         <span className="size-label">{t('size.sliderLabel')}</span>
@@ -250,13 +322,6 @@ export function GeneratePanel() {
       <div className="hint dim" style={{ margin: '2px 0 0', fontSize: 10.5 }}>{t('size.range')}</div>
 
       <div className="chips">
-        {CASTS.map((x) => (
-          <button key={x.id} className={`chip${cast === x.id ? ' on' : ''}`} onClick={() => setCast(x.id)} disabled={busy} title={t(x.hintKey)}>
-            {t(x.labelKey)}
-          </button>
-        ))}
-      </div>
-      <div className="chips">
         {PRESETS.map((x) => (
           <button key={x.id} className={`chip${preset === x.id ? ' on' : ''}`} onClick={() => setPreset(x.id)} disabled={busy}>
             {t(x.labelKey)} · {x.gap}mm
@@ -300,7 +365,7 @@ export function GeneratePanel() {
       </div>
       <button
         className="btn primary wide"
-        onClick={() => generate({ ...params, masterScale: k, ...(result ? { splitAxis: result.axis } : {}) })}
+        onClick={() => generateWithIntent({ ...params, masterScale: k, ...(result && result.method?.family === requestedFamily ? { splitAxis: result.axis } : {}) })}
         disabled={busy}
       >
         {result ? t('gen.regenerate') : t('gen.generate')}
@@ -312,8 +377,10 @@ export function GeneratePanel() {
             {result.siliconeMl.toFixed(0)} <span className="unit">{t('gen.mlSilicone')}</span>
           </div>
           <div className="hint dim">
-            {t('gen.split', { axis: result.axis })}{result.panels === 3 ? t('gen.threePiece') : ''}
-            {result.panels === 3
+            {result.panels === 1
+              ? (lang === 'fa' ? 'سینی برجسته با بالای باز؛ دیواره و پایه در قاب چاپ قرار دارند.' : 'Open-face relief tray; wall and base lie in the print frame.')
+              : t('gen.split', { axis: result.axis })}{result.panels === 3 ? t('gen.threePiece') : ''}
+            {result.panels === 1 ? '' : result.panels === 3
               ? t('gen.extract3', { a: result.extraction.A, b1: result.extraction.B1 ?? '—', b2: result.extraction.B2 ?? '—' })
               : t('gen.extract2', { a: result.extraction.A, b: result.extraction.B })}
             <br />{t('gen.elapsed', { s: (result.elapsedMs / 1000).toFixed(1), d: result.outerDim.map((d) => d.toFixed(0)).join(' × ') })}
@@ -346,23 +413,14 @@ export function GeneratePanel() {
             );
           })()}
           {(() => {
-            const trapped = report?.axes.find((a) => a.axis === result.axis)?.trappedPct ?? 0;
-            const v = trapped <= 5 ? { label: 'HIGH', cls: 'pass' } : trapped <= 12 ? { label: 'MEDIUM', cls: 'soft' } : { label: 'LOW', cls: 'fail' };
+            const rigidPass = result.releaseResult?.rigid.every(x => x.pass) ?? false;
             return (
-              <div className={`gate ${v.cls}`}>
-                <span className="gate-mark">{trapped <= 5 ? '✓' : '⚠'}</span>
-                <span className="gate-name">{t('gen.release', { level: v.label })}</span>
+              <div className={`gate ${rigidPass ? 'pass' : 'fail'}`}>
+                <span className="gate-mark">{rigidPass ? '✓' : '✗'}</span>
+                <span className="gate-name">{lang === 'fa' ? 'رهاسازی بخش‌های سخت' : 'Rigid-part release'}</span>
                 <span className="gate-detail">
-                  {t(
-                    result.panels === 3 ? 'gen.release.detail3' : trapped > 5 ? 'gen.release.detailTest' : 'gen.release.detail',
-                    { p: trapped.toFixed(1), axis: result.axis },
-                  )}
+                  {result.releaseResult?.rigid.map(x => `${x.part}: ${x.pass ? 'pass' : 'fail'}`).join(' · ') ?? 'unverified'}
                 </span>
-                {trapped > 5 && result.panels !== 3 && (
-                  <button className="chip" onClick={() => generate({ ...params, masterScale: k, panels: 3 })} disabled={busy} title={t('gen.threePieceBtnTitle')}>
-                    {t('gen.threePieceBtn')}
-                  </button>
-                )}
               </div>
             );
           })()}
@@ -375,9 +433,9 @@ export function GeneratePanel() {
                 <button className={`chip${layers.jacketB1 ? ' on' : ''}`} onClick={() => toggleLayer('jacketB1')}>{t('layer.jacketB1')}</button>
                 <button className={`chip${layers.jacketB2 ? ' on' : ''}`} onClick={() => toggleLayer('jacketB2')}>{t('layer.jacketB2')}</button>
               </>
-            ) : (
+            ) : result.panels === 2 ? (
               <button className={`chip${layers.jacketB ? ' on' : ''}`} onClick={() => toggleLayer('jacketB')}>{t('layer.jacketB')}</button>
-            )}
+            ) : null}
             <button className={`chip${layers.plate ? ' on' : ''}`} onClick={() => toggleLayer('plate')}>{t('layer.plate')}</button>
             <button className={`chip${layers.outer ? ' on' : ''}`} onClick={() => toggleLayer('outer')}>{t('layer.outer')}</button>
           </div>

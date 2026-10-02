@@ -10,11 +10,14 @@ import { parseGlb } from '../engine/glb';
 import { isStatusOk, loadManifold, type ManifoldMod } from '../engine/manifoldLoader';
 import { extractIso, instanceToMeshArrays } from '../engine/offset';
 import { buildSignedDistanceGrid } from '../engine/offset';
+import { suggestIntent } from '../engine/moldMethod';
+import { pickStabilityBacking } from '../engine/orientation';
+import { shellConnectivity } from '../engine/solid';
 import { parseObj } from '../engine/obj';
-import { planMold, rankSplitAxes, type PlanSuccess } from '../engine/planner';
+import { planMold, type PlanSuccess } from '../engine/planner';
 import { parseStlBinary } from '../engine/stl';
 import { weldMesh } from '../engine/weld';
-import { AXES, functionalFloors, type AnalysisReport, type GenerateParams, type GenerateResult, type MeshArrays, type WorkerRequest, WorkerResponse } from '../engine/types';
+import { AXES, functionalFloors, type AnalysisReport, type CastingIntent, type GenerateParams, type GenerateResult, type MeshArrays, type SuggestedIntent, type WorkerRequest, WorkerResponse } from '../engine/types';
 
 const ctx = self as unknown as Worker;
 let mod: ManifoldMod | null = null;
@@ -162,14 +165,56 @@ async function ingest(fileName: string, bytes: ArrayBuffer): Promise<void> {
     };
     post({ type: 'progress', stage: 'Done', pct: 1 });
     post({ type: 'analysis', report, preview: analysis });
+    // Best-fit DEFAULTS (UX): propose the casting intent + backing side the
+    // measured geometry supports, so the user starts from the algorithm's
+    // suggestion and only overrides when their intent differs.
+    try {
+      const suggestion = suggestIntent(analysis);
+      const stability = pickStabilityBacking(analysis);
+      // Multi-body policy: only shells that truly OVERLAP (shared volume)
+      // suggest fusing; shells that merely touch or are disjoint stay a
+      // review — an intentional separate piece resting on the body (giraffe
+      // rule) must not be silently merged.
+      const shells = shellConnectivity(m, analysis);
+      // Fuse only on REAL volumetric overlap — relative threshold so a
+      // scaling never flips the decision (the giraffe's small shell touches
+      // the body: review at every size; the gnome's parts share 16% of the
+      // total volume: fuse at every size).
+      const overlapsMaterial = shells.overlapMm3 > Math.max(1, 0.01 * Math.max(1, shells.volumeSumMm3));
+      const multiBodyHandling: SuggestedIntent['multiBodyHandling'] =
+        shells.positiveShells > 1 && shells.connectedGroups === 1 && overlapsMaterial
+          ? 'fuse_overlapping'
+          : 'auto_review';
+      const multiBodyNote = shells.positiveShells > 1
+        ? (shells.connectedGroups > 1
+          ? `${shells.positiveShells} shells form ${shells.connectedGroups} disjoint groups — plan one mold per piece`
+          : overlapsMaterial
+            ? `${shells.positiveShells} shells share ${shells.overlapMm3.toFixed(1)} mm³ of overlapping material — fuse into one cast`
+            : `${shells.positiveShells} shells touch without sharing material — confirm whether they are one cast or separate pieces`)
+        : null;
+      post({
+        type: 'suggested-intent',
+        suggestion: {
+          surfaces: suggestion.surfaces,
+          family: suggestion.family,
+          backingNormalSource: stability.normal,
+          multiBodyHandling,
+          positiveShells: shells.positiveShells,
+          connectedGroups: shells.connectedGroups,
+          reason: multiBodyNote ? `${suggestion.reason}; ${multiBodyNote}` : suggestion.reason,
+        },
+      });
+    } catch { /* suggestion is advisory only — never block ingest */ }
   } finally {
     dec?.delete();
     man?.delete();
   }
 }
 
-async function generate(params: GenerateParams): Promise<void> {
+async function generate(params: GenerateParams, castingIntent: CastingIntent): Promise<void> {
   if (!state) throw new Error('Import a master first');
+  state.lastResult = null;
+  state.lastPlan = null;
   // gap/wall arrive master-scale-aware from the size panel; the floors are
   // functional manufacturing minimums (reliability brief §2), not kernel limits —
   // they protect CLI/API callers the same way the UI floors protect the panel.
@@ -199,26 +244,20 @@ async function generate(params: GenerateParams): Promise<void> {
       triVerts: state.master.triVerts,
     };
 
-  post({ type: 'progress', stage: 'Building distance field', pct: 0.05 });
-  // V0.2: the grid, package and gates all run on the FULL-RES master — the
-  // decimated analysis mesh shrinks pointy features (ears, fingers) by a few
-  // mm, which would leave the printed master loose inside its glove
-  const grid = await buildSignedDistanceGrid(master, {
-    gap, wall, step: 0.75,
-    onProgress: (stage, pct) => post({ type: 'progress', stage, pct: 0.05 + pct * 0.55 }),
-  });
+  if (castingIntent.inputRole === 'unknown' || castingIntent.requiredSurfaces === 'unspecified') {
+    post({ type: 'failure', outcome: 'review_required', axis: state.report.bestAxis,
+      trappedPct: 0, message: 'Confirm whether this file is a positive master and which surfaces must be cast before generating.' });
+    return;
+  }
 
-  // P8 quiet-line seam placement + the FULL candidate ladder (gap retry,
-  // release staging, gates, fusion, export prep) live in the shared planner —
-  // byte-identical policy to the CLI (plan Task 4).
-  const rankedAxes = rankSplitAxes(state.report.axes, state.analysis, grid, gap);
-
-  post({ type: 'progress', stage: 'Splitting jacket and simulating extraction', pct: 0.65 });
+  // The shared planner aligns the approved signed backing before constructing
+  // the full-resolution distance field; relief trays need no SDF at all.
+  post({ type: 'progress', stage: 'Choosing the mold frame and method', pct: 0.58 });
   const scaleNotes: string[] = [];
   if (state.normalizeNote) scaleNotes.push(state.normalizeNote);
   if (k !== 1) scaleNotes.push(`size panel scale ×${k.toFixed(4)} applied before analysis`);
   const plan = await planMold({
-    mod: m, master, grid, rankedAxes,
+    mod: m, master,
     params: { ...params, gap, wall },
     name: state.fileName.replace(/\.[^.]+$/, ''),
     source: {
@@ -228,13 +267,9 @@ async function generate(params: GenerateParams): Promise<void> {
       engineCommit: 'browser-runtime',
     },
     ports: false,
-    // mold-family intent from the panel's cast chips (same mapping as the CLI):
-    // front_only routes a flat-back master to the tray branch (gates in
-    // runTrayGates); everything else keeps the generic split-jacket ladder
-    castingIntent: {
-      inputRole: 'positive_master' as const,
-      requiredSurfaces: params.cast === 'front_only' ? 'front_only' as const : 'all_sides' as const,
-    },
+    // full casting intent from the panel's form (family, surfaces, backing
+    // side, multi-body) — the panel auto-suggests it, the user can override
+    castingIntent,
     // export prep (cleanup + serialized-bytes audit) runs INSIDE the candidate
     // loop exactly as in the CLI — a candidate whose package would fail the
     // final audit yields to the next one before the user ever sees it
@@ -243,6 +278,11 @@ async function generate(params: GenerateParams): Promise<void> {
   });
 
   if (!plan.ok) {
+    if (plan.outcome !== 'rejected') {
+      post({ type: 'failure', outcome: plan.outcome, axis: state.report.bestAxis,
+        trappedPct: 0, message: plan.message });
+      return;
+    }
     // all candidates failed — send trap-region data for the failure overlay (T003)
     const bestAxis = plan.bestAxis ?? state.report.bestAxis;
     const trap = trappedColumnMask(state.analysis, bestAxis, 64);
@@ -255,7 +295,7 @@ async function generate(params: GenerateParams): Promise<void> {
       const iv = Math.max(0, Math.min(trap.grid - 1, Math.floor(((vp[i * 3 + v3] - trap.minV) / trap.spanV) * trap.grid)));
       if (trap.mask[iv * trap.grid + iu]) flags[i] = 1;
     }
-    post({ type: 'failure', axis: bestAxis, trappedPct: state.report.axes[0].trappedPct,
+    post({ type: 'failure', outcome: plan.outcome, axis: bestAxis, trappedPct: state.report.axes[0].trappedPct,
       message: plan.message + (params.panels === 3
         ? ' — the sub-panels may fragment into disconnected pieces on this shape at these settings.'
         : ' — the highlighted regions trap the jacket on every candidate axis'),
@@ -263,6 +303,7 @@ async function generate(params: GenerateParams): Promise<void> {
     return;
   }
   const pkg = plan.pkg;
+  const isTray = plan.method.family === 'open_face_relief';
   const effGap = plan.gapEff;
   const is3 = pkg.panels === 3;
   // The planner already built + final-audited the actual package bytes — the
@@ -275,14 +316,14 @@ async function generate(params: GenerateParams): Promise<void> {
   if (pkg.ports.vents.length === 0 && (pkg.siliconeMl > 150 || trappedPct > 10)) {
     extraWarnings.push('No automatic air vents were generated. Review local high points before the production pour.');
   }
-  const masterFinal = master;
+  const masterFinal = plan.moldMaster;
   const masterBaseArr = plan.masterBase;
 
   const result: GenerateResult = {
     parts: {
       master: masterFinal, masterBase: masterBaseArr,
       jacketOuter: pkg.pieces.jacketSolid,
-      jacketA: pkg.pieces.jacketA, jacketB: pkg.pieces.jacketB, basePlate: pkg.pieces.basePlate,
+      jacketA: pkg.pieces.jacketA, ...(!isTray ? { jacketB: pkg.pieces.jacketB } : {}), basePlate: pkg.pieces.basePlate,
       siliconeSkin: pkg.pieces.skin,
       ...(is3 ? { jacketB1: pkg.pieces.jacketB1!, jacketB2: pkg.pieces.jacketB2! } : {}),
     },
@@ -295,7 +336,7 @@ async function generate(params: GenerateParams): Promise<void> {
       B: pkg.extraction.B?.freeAtMm ?? (pkg.extraction.B1?.pass && pkg.extraction.B2?.pass ? Math.min(pkg.extraction.B1.freeAtMm, pkg.extraction.B2.freeAtMm) : 0),
       ...(is3 ? { B1: pkg.extraction.B1?.freeAtMm ?? 0, B2: pkg.extraction.B2?.freeAtMm ?? 0 } : {}),
     },
-    panels: pkg.panels,
+    panels: isTray ? 1 : pkg.panels,
     warnings: [...extraWarnings, ...plan.warnings],
     checks: plan.checks,
     gatesPass: plan.checks.every((c) => c.pass || !c.hard),
@@ -314,7 +355,7 @@ async function generate(params: GenerateParams): Promise<void> {
   // estimates in the size panel); preview-only parts excluded
   const partVolumesCm3: Record<string, number> = {};
   for (const [name, mesh] of Object.entries(result.parts)) {
-    if (name === 'master' || name === 'siliconeSkin' || name === 'jacketOuter') continue;
+    if (name === 'master' || name === 'siliconeSkin' || name === 'jacketOuter' || name === 'basePlate') continue;
     partVolumesCm3[name] = Number(meshVolumeCm3(mesh).toFixed(1));
   }
   result.partVolumesCm3 = partVolumesCm3;
@@ -389,7 +430,7 @@ ctx.onmessage = (e: MessageEvent<WorkerRequest>) => {
   void (async () => {
     try {
       if (req.type === 'ingest') await ingest(req.fileName, req.bytes);
-      else if (req.type === 'generate') await generate(req.params);
+      else if (req.type === 'generate') await generate(req.params, req.castingIntent);
       else if (req.type === 'export') await exportPackage();
     } catch (err) {
       post({ type: 'error', message: err instanceof Error ? err.message : String(err) });

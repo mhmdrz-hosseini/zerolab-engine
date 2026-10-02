@@ -500,7 +500,7 @@ function cleanOnce(m: MeshArrays): {
 /** Audit score for choosing between cleanup results (higher is better). */
 function auditScore(a: MeshAudit): number {
   return (a.watertight ? 100 : 0) - a.nonManifoldEdges * 3 - a.boundaryEdges * 2
-    - a.degenerateTris * 4 - a.zeroVolumeComponents;
+    - a.degenerateTris * 4 - a.zeroVolumeComponents - a.pinchedEdges * 3;
 }
 
 /**
@@ -527,6 +527,28 @@ export function cleanExportMesh(m: MeshArrays, mod?: ManifoldMod): CleanedMesh {
   const requantized = quantizeMerge(r.vp, r.tv, 1e-3);
   r = cleanOnce({ vertProperties: requantized.vp, triVerts: requantized.tv });
   let audit = auditMeshArrays(r.vp, r.tv);
+
+  // Reconstruct the unmodified solid before trying further index surgery.
+  // Generated CSG meshes may carry redundant boolean vertices which collapse
+  // into pinches in the STL weld. Exact kernel simplification can remove those
+  // vertices without moving the surface or accepting a pinched alternative.
+  if (mod && (audit.pinchedEdges > 0 || !audit.watertight || audit.degenerateTris > 0)) {
+    let rebuilt: import('./manifoldLoader').ManifoldInstance | null = null;
+    let exact: import('./manifoldLoader').ManifoldInstance | null = null;
+    try {
+      rebuilt = new mod.Manifold(new mod.Mesh({ numProp: 3, ...m }));
+      exact = rebuilt.simplify(0);
+      if (isStatusOk(exact)) {
+        const dm=exact.getMesh();
+        const first=cleanOnce({vertProperties:Float32Array.from(dm.vertProperties), triVerts:Uint32Array.from(dm.triVerts.subarray(0,dm.numTri*3))});
+        const welded=quantizeMerge(first.vp,first.tv,1e-3);
+        const candidate=cleanOnce({vertProperties:welded.vp,triVerts:welded.tv});
+        const a=auditMeshArrays(candidate.vp,candidate.tv);
+        if(auditScore(a)>auditScore(audit)){r=candidate;audit=a;}
+      }
+    } catch { /* retain the candidate with measured diagnostics */ }
+    finally { exact?.delete(); rebuilt?.delete(); }
+  }
 
   if (mod && (!audit.watertight || audit.degenerateTris > 0 || audit.zeroVolumeComponents > 0)) {
     try {

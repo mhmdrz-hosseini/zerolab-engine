@@ -1,0 +1,380 @@
+{
+  "schemaVersion": 1,
+  "name": "mold-v3-digital-acceptance",
+  "status": "specified_not_yet_executed",
+  "baselineEngineCommit": "312971322ce8a7ce92c61f2ed293e2ef4971e51b",
+  "reviewedHeadShort": "c51aa9b",
+  "inputRoot": "D:/code/3d/MOLD/MOLD-generator base/input",
+  "supportedFormats": [
+    "stl",
+    "obj",
+    "glb"
+  ],
+  "explicitUnsupportedFormats": [
+    "step",
+    "stp",
+    "3mf"
+  ],
+  "fixtureUnit": "mm",
+  "requiredProfile": {
+    "id": "fdm-development-0p4",
+    "nozzleMm": 0.4,
+    "layerHeightMm": 0.2,
+    "wallMinMm": 3,
+    "requestedWallMm": 5,
+    "requestedGapMm": 6,
+    "siliconeBackingMm": 6,
+    "freeboardMm": 5,
+    "plateThicknessMm": 4,
+    "jointClearanceMm": 0.35,
+    "buildVolumeMm": [
+      250,
+      250,
+      250
+    ],
+    "physicalCalibration": "unverified"
+  },
+  "tolerancePolicy": {
+    "exactSyntheticOverlapMaxMm3": 0.001,
+    "exactSyntheticPostOccupancyErrorMm3": 0.001,
+    "rigidTransformRoundTripMaxMm": 0.01,
+    "equivalentOrientationVolumeRelativeMax": 0.02,
+    "freeboardOnlySiliconeChangeMaxMl": 0.01,
+    "manufacturingClearanceSource": "requiredProfile",
+    "fidelityBudgetRule": "Maximum displacement min(0.05 mm, finestProtectedFeatureMm/10) outside approved backing attachment; preserve hole topology; record feature measurement; missing measurement blocks repair certification",
+    "prohibition": "Do not increase thresholds in response to a failing case without a separately justified contract revision and full reevaluation"
+  },
+  "requiredDigitalChecks": [
+    "input_role_and_units",
+    "expected_family",
+    "approved_signed_backing",
+    "protected_detail_and_hole_topology",
+    "canonical_transform_round_trip",
+    "intended_material_connectivity",
+    "serialized_mesh_validity",
+    "assembly_no_unintended_overlap",
+    "fit_and_seal_geometry",
+    "rigid_seating_and_removal",
+    "silicone_posts_and_fill_level",
+    "profile_wall_feature_and_bed_limits",
+    "material_units_and_accounting",
+    "cli_browser_intent_parity",
+    "measured_visual_review"
+  ],
+  "externalQualificationChecks": [
+    "slicer_support_and_filament",
+    "printed_fit_coupon",
+    "clip_retention_and_seal",
+    "silicone_pour_and_demold",
+    "end_use_material_qualification"
+  ],
+  "completion": {
+    "allRequiredSuccessCasesMustPass": true,
+    "silentFamilyFallbackAllowed": false,
+    "metadataOnlySuccessAllowed": false,
+    "suspectMeshCountsAsVerified": false,
+    "requiredSkippedChecksAllowed": false,
+    "universalManufacturabilityClaimAllowed": false
+  },
+  "requiredSuccessCases": [
+    {
+      "id": "montagem-50",
+      "sourceFile": "Montagem flat.stl",
+      "sizeMm": 50,
+      "inputRole": "positive_master",
+      "requiredSurfaces": "front_only",
+      "requestedFamily": "open_face_relief",
+      "expectedFamily": "open_face_relief",
+      "expectedOutcome": "digital_verified",
+      "backingExpectation": "approved broad back",
+      "silentFallbackAllowed": false
+    },
+    {
+      "id": "montagem-200",
+      "sourceFile": "Montagem flat.stl",
+      "sizeMm": 200,
+      "inputRole": "positive_master",
+      "requiredSurfaces": "front_only",
+      "requestedFamily": "open_face_relief",
+      "expectedFamily": "open_face_relief",
+      "expectedOutcome": "digital_verified",
+      "backingExpectation": "approved broad back",
+      "silentFallbackAllowed": false
+    },
+    {
+      "id": "cap-50",
+      "sourceFile": "obj_2_latern_cap.stl",
+      "backingNormalSource": [0, 0, -1],
+      "sizeMm": 50,
+      "inputRole": "positive_master",
+      "requiredSurfaces": "front_only",
+      "requestedFamily": "open_face_relief",
+      "expectedFamily": "open_face_relief",
+      "expectedOutcome": "digital_verified",
+      "backingExpectation": "approved broad back",
+      "silentFallbackAllowed": false
+    },
+    {
+      "id": "cap-200",
+      "sourceFile": "obj_2_latern_cap.stl",
+      "backingNormalSource": [0, 0, -1],
+      "sizeMm": 200,
+      "inputRole": "positive_master",
+      "requiredSurfaces": "front_only",
+      "requestedFamily": "open_face_relief",
+      "expectedFamily": "open_face_relief",
+      "expectedOutcome": "digital_verified",
+      "backingExpectation": "approved broad back",
+      "silentFallbackAllowed": false
+    },
+    {
+      "id": "koerper-50",
+      "sourceFile": "obj_1_Körper.stl",
+      "sizeMm": 50,
+      "inputRole": "positive_master",
+      "requiredSurfaces": "all_sides",
+      "requestedFamily": "full_3d_jacket",
+      "expectedFamily": "full_3d_jacket",
+      "expectedOutcome": "digital_verified",
+      "backingExpectation": "approved natural base; preserve body detail",
+      "silentFallbackAllowed": false
+    },
+    {
+      "id": "koerper-200",
+      "sourceFile": "obj_1_Körper.stl",
+      "sizeMm": 200,
+      "inputRole": "positive_master",
+      "requiredSurfaces": "all_sides",
+      "requestedFamily": "full_3d_jacket",
+      "expectedFamily": "full_3d_jacket",
+      "expectedOutcome": "digital_verified",
+      "backingExpectation": "approved natural base; preserve body detail",
+      "silentFallbackAllowed": false
+    },
+    {
+      "id": "giraffe-50",
+      "sourceFile": "obj_1_Minimalist Giraffe figurine-2.stl",
+      "sizeMm": 50,
+      "inputRole": "positive_master",
+      "requiredSurfaces": "all_sides",
+      "requestedFamily": "full_3d_jacket",
+      "expectedFamily": "full_3d_jacket",
+      "expectedOutcome": "digital_verified",
+      "backingExpectation": "approved natural base; preserve body detail",
+      "silentFallbackAllowed": false
+    },
+    {
+      "id": "giraffe-200",
+      "sourceFile": "obj_1_Minimalist Giraffe figurine-2.stl",
+      "sizeMm": 200,
+      "inputRole": "positive_master",
+      "requiredSurfaces": "all_sides",
+      "requestedFamily": "full_3d_jacket",
+      "expectedFamily": "full_3d_jacket",
+      "expectedOutcome": "digital_verified",
+      "backingExpectation": "approved natural base; preserve body detail",
+      "silentFallbackAllowed": false
+    }
+  ],
+  "syntheticRequirements": [
+    {
+      "id": "relief_rotated_90",
+      "expected": "same_family_and_backing_after_normalization"
+    },
+    {
+      "id": "relief_rotated_180",
+      "expected": "detail_up_backing_down_after_normalization"
+    },
+    {
+      "id": "relief_arbitrary_rotation",
+      "expected": "same_family_topology_and_volume_within_tolerance"
+    },
+    {
+      "id": "relief_translated",
+      "expected": "equivalent_canonical_output"
+    },
+    {
+      "id": "tray_wall_base_fit",
+      "expected": "no_unintended_overlap_and_verified_removal"
+    },
+    {
+      "id": "straight_hole_post",
+      "expected": "one_cubic_mm_center_probe_fully_inside_connected_silicone_post"
+    },
+    {
+      "id": "reentrant_hole",
+      "expected": "validated_core_or_review_required"
+    },
+    {
+      "id": "freeboard_change_2_to_7",
+      "expected": "wall_height_plus_5mm_silicone_volume_unchanged"
+    },
+    {
+      "id": "volume_cm3_ml",
+      "expected": "25.1_cm3_equals_25.1_ml_no_false_warning"
+    },
+    {
+      "id": "hollow_cube",
+      "expected": "20mm_outer_10mm_void_net_7_cm3"
+    },
+    {
+      "id": "thin_release_obstacle",
+      "expected": "collision_rejected_even_between_old_fixed_steps"
+    },
+    {
+      "id": "coplanar_contact_release",
+      "expected": "contact_only_motion_accepted_under_numeric_policy"
+    },
+    {
+      "id": "unknown_intent",
+      "expected": "review_required_no_successful_print_package"
+    },
+    {
+      "id": "tooling_role",
+      "expected": "review_required_no_generic_jacket_export"
+    },
+    {
+      "id": "negative_mold_role",
+      "expected": "review_required_no_generic_jacket_export"
+    },
+    {
+      "id": "deep_vessel_inner_outer",
+      "expected": "validated_core_or_review_required_never_generic_jacket_success"
+    },
+    {
+      "id": "open_sheet",
+      "expected": "rejected_or_bounded_approved_repair_never_false_solid"
+    },
+    {
+      "id": "corrupt_bytes",
+      "expected": "intake_diagnostic_no_successful_print_package"
+    },
+    {
+      "id": "unknown_units",
+      "expected": "review_required_size_confirmation"
+    },
+    {
+      "id": "invalid_cli_enum",
+      "expected": "intake_diagnostic"
+    },
+    {
+      "id": "unsupported_step_3mf",
+      "expected": "unsupported_with_conversion_guidance"
+    },
+    {
+      "id": "disconnected_scene",
+      "expected": "explicit_multi_body_intent_or_review_required"
+    },
+    {
+      "id": "sub_resolution_detail",
+      "expected": "dimension_specific_review_or_rejection_no_detail_deletion"
+    },
+    {
+      "id": "oversize_part",
+      "expected": "profile_specific_rejection_no_silent_resize"
+    }
+  ],
+  "coverage": {
+    "baselineCorpus": {
+      "source": "all_20_prior_batch_models",
+      "sizesMm": [
+        50,
+        200
+      ],
+      "explicitIntentPerCaseRequired": true,
+      "convertedBunnyProvenanceRequired": true,
+      "purpose": "independent_behavioral_evaluation_not_export_count",
+      "previousFailuresMayImprove": true,
+      "newRejectionNeedsEvidence": true
+    },
+    "coreScaleSweepMm": [
+      20,
+      35,
+      50,
+      100,
+      200,
+      300
+    ],
+    "requiredSuccessSizesMm": [
+      50,
+      200
+    ],
+    "outOfProfileOutcome": "specific_review_or_rejection_with_measured_limit",
+    "rotationsEulerDegrees": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        90,
+        0,
+        0
+      ],
+      [
+        0,
+        90,
+        0
+      ],
+      [
+        0,
+        0,
+        90
+      ],
+      [
+        180,
+        0,
+        0
+      ],
+      [
+        17,
+        31,
+        43
+      ]
+    ],
+    "translationsMm": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        117,
+        -83,
+        41
+      ]
+    ],
+    "retessellation": "split coplanar triangles without changing shape",
+    "corePerturbationSizesMm": [
+      50,
+      200
+    ],
+    "combinePerturbations": true,
+    "note": "At 50/200 all core variants remain required-success under unchanged feasible manufacturing assumptions; 20/35/100/300 receive geometry/profile-specific outcomes. Do not relabel a feasible core failure as out-of-profile."
+  },
+  "evidence": {
+    "attemptRecord": "attempt.json",
+    "requiredArtifacts": [
+      "commands_and_exit_codes",
+      "source_code_profile_contract_hashes",
+      "exported_stl_hashes",
+      "independent_geometry_results",
+      "annotated_mesh_renders",
+      "rejection_ledger",
+      "qualification_states"
+    ],
+    "timestampsDoNotReplaceHashes": true
+  },
+  "executionOrder": [
+    "T01",
+    "T02",
+    "T03",
+    "T04",
+    "T05",
+    "T06",
+    "T07",
+    "T08",
+    "T09",
+    "T10"
+  ]
+}

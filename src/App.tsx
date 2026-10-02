@@ -98,7 +98,7 @@ export default function App() {
   if (masterMesh && layers.master) layerDefs.push({ id: 'master', mesh: masterMesh, color: '#9fb6c6', opacity: failure ? 0.92 : 0.5, order: 2, trap: failure?.trapFlags });
   if (showResult && layers.skin) layerDefs.push({ id: 'siliconeSkin', mesh: result!.parts.siliconeSkin, color: '#5ec9a8', opacity: 0.45, order: 3 });
   if (showResult && layers.jacketA) layerDefs.push({ id: 'jacketA', mesh: result!.parts.jacketA, color: '#7fa8d6', opacity: 0.4, order: 4 });
-  if (showResult && layers.jacketB) layerDefs.push({ id: 'jacketB', mesh: result!.parts.jacketB, color: '#d686a2', opacity: 0.4, order: 4 });
+  if (showResult && layers.jacketB && result!.panels !== 1) layerDefs.push({ id: 'jacketB', mesh: result!.parts.jacketB, color: '#d686a2', opacity: 0.4, order: 4 });
   if (showResult && layers.jacketB1) layerDefs.push({ id: 'jacketB1', mesh: result!.parts.jacketB1!, color: '#7fcbb0', opacity: 0.4, order: 4 });
   if (showResult && layers.jacketB2) layerDefs.push({ id: 'jacketB2', mesh: result!.parts.jacketB2!, color: '#d6b47f', opacity: 0.4, order: 4 });
   if (showResult && layers.plate) layerDefs.push({ id: 'basePlate', mesh: result!.parts.basePlate, color: '#c9b391', opacity: 0.9, order: 1 });
@@ -130,7 +130,7 @@ export default function App() {
         <aside className="sidebar">
         <ImportPanel />
         {report && <AnalysisPanel report={report} />}
-        <GeneratePanel />
+        <GeneratePanel key={report?.fileName ?? 'no-file'} />
         {phase === 'busy' && progress && (
           <section className="panel">
             <div className="progress-label">{te(lang, progress.stage)}</div>
@@ -145,9 +145,9 @@ export default function App() {
         )}
         {failure && (
           <section className="panel error-panel">
-            <div className="panel-title">{t('panel.failure')}</div>
+            <div className="panel-title">{failure.outcome === 'review_required' ? (lang === 'fa' ? 'نیاز به بررسی' : 'Review required') : t('panel.failure')}</div>
             <div className="warning">{te(lang, failure.message)}</div>
-            <div className="hint dim">{t('failure.hint', { axis: failure.axis })}</div>
+            {failure.outcome === 'rejected' && <div className="hint dim">{t('failure.hint', { axis: failure.axis })}</div>}
           </section>
         )}
       </aside>

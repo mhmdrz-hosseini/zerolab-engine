@@ -1,7 +1,7 @@
 // App state — meshes live ONLY in the worker; the store holds the analysis
 // report and transferred result arrays for rendering.
 import { create } from 'zustand';
-import type { AnalysisReport, GenerateParams, GenerateResult, MeshArrays, WorkerResponse } from '../engine/types';
+import type { AnalysisReport, CastingIntent, GenerateParams, GenerateResult, MeshArrays, SuggestedIntent, WorkerResponse } from '../engine/types';
 import { applyDocumentLang, type Lang } from '../i18n';
 
 export type Phase = 'idle' | 'busy' | 'ready' | 'error';
@@ -20,6 +20,7 @@ export interface Layers {
 export interface FailureInfo {
   axis: string;
   message: string;
+  outcome?: 'review_required' | 'unsupported' | 'rejected';
   trapFlags?: Uint8Array;
 }
 
@@ -33,6 +34,7 @@ interface StoreState {
   fileName: string | null;
   report: AnalysisReport | null;
   preview: MeshArrays | null;
+  suggestion: SuggestedIntent | null; // worker's best-fit intent proposal for the ingested master
   result: GenerateResult | null;
   layers: Layers;
   explode: number;      // 0..1 exploded-view separation along the pull axis
@@ -41,7 +43,7 @@ interface StoreState {
   exportName: string | null;
   ingest: (file: File) => void;
   ingestBytes: (bytes: ArrayBuffer, name: string) => void;
-  generate: (params: GenerateParams) => void;
+  generate: (params: GenerateParams, castingIntent: CastingIntent) => void;
   exportPkg: () => void;
   toggleLayer: (k: keyof Layers) => void;
   setExplode: (t: number) => void;
@@ -59,7 +61,9 @@ function getWorker(): Worker {
     if (msg.type === 'progress') {
       useStore.setState({ phase: 'busy', progress: { stage: msg.stage, pct: msg.pct } });
     } else if (msg.type === 'analysis') {
-      useStore.setState({ phase: 'ready', progress: null, report: msg.report, preview: msg.preview, error: null, result: null });
+      useStore.setState({ phase: 'ready', progress: null, report: msg.report, preview: msg.preview, error: null, result: null, suggestion: null });
+    } else if (msg.type === 'suggested-intent') {
+      useStore.setState({ suggestion: msg.suggestion });
     } else if (msg.type === 'result') {
       useStore.setState(() => ({
         phase: 'ready',
@@ -72,7 +76,7 @@ function getWorker(): Worker {
       useStore.setState({
         phase: 'ready',
         progress: null,
-        failure: { axis: msg.axis, message: msg.message, trapFlags: msg.trapFlags },
+        failure: { axis: msg.axis, message: msg.message, outcome: msg.outcome, trapFlags: msg.trapFlags },
         layers: { ...useStore.getState().layers, master: true, skin: false, jacketA: false, jacketB: false, jacketB1: false, jacketB2: false, plate: false },
       });
     } else if (msg.type === 'export') {
@@ -100,6 +104,7 @@ export const useStore = create<StoreState>((set) => ({
   fileName: null,
   report: null,
   preview: null,
+  suggestion: null,
   result: null,
   failure: null,
   exportUrl: null,
@@ -116,9 +121,9 @@ export const useStore = create<StoreState>((set) => ({
     set({ phase: 'busy', progress: { stage: 'Reading file', pct: 0 }, error: null, report: null, preview: null, result: null, failure: null, exportUrl: null, exportName: null, fileName: name });
     getWorker().postMessage({ type: 'ingest', fileName: name, bytes }, [bytes]);
   },
-  generate: (params) => {
-    set({ phase: 'busy', progress: { stage: 'Starting generate', pct: 0 }, error: null, failure: null, exportUrl: null, exportName: null });
-    getWorker().postMessage({ type: 'generate', params });
+  generate: (params, castingIntent) => {
+    set({ phase: 'busy', progress: { stage: 'Starting generate', pct: 0 }, error: null, failure: null, result: null, exportUrl: null, exportName: null });
+    getWorker().postMessage({ type: 'generate', params, castingIntent });
   },
   exportPkg: () => {
     set({ phase: 'busy', progress: { stage: 'Building print package', pct: 0.5 }, error: null });
@@ -127,5 +132,5 @@ export const useStore = create<StoreState>((set) => ({
   toggleLayer: (k) => set((s) => ({ layers: { ...s.layers, [k]: !s.layers[k] } })),
   setExplode: (t2) => set({ explode: t2 }),
   setRealView: (on) => set({ realView: on }),
-  reset: () => set({ phase: 'idle', progress: null, error: null, failure: null, report: null, preview: null, result: null, exportUrl: null, exportName: null, explode: 0, realView: false, layers: { master: true, skin: true, outer: false, jacketA: false, jacketB: false, jacketB1: false, jacketB2: false, plate: false } }),
+  reset: () => set({ phase: 'idle', progress: null, error: null, failure: null, report: null, preview: null, result: null, exportUrl: null, exportName: null, suggestion: null, explode: 0, realView: false, layers: { master: true, skin: true, outer: false, jacketA: false, jacketB: false, jacketB1: false, jacketB2: false, plate: false } }),
 }));

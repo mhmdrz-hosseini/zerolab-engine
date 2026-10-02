@@ -15,13 +15,12 @@ import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { buildReport, computeBBox, validateMasterMesh } from '../src/engine/analyze';
 import { isStatusOk, loadManifold } from '../src/engine/manifoldLoader';
-import { buildSignedDistanceGrid } from '../src/engine/offset';
-import { planMold, rankSplitAxes } from '../src/engine/planner';
+import { planMold } from '../src/engine/planner';
 import { weldMesh } from '../src/engine/weld';
 import { parseGlb } from '../src/engine/glb';
 import { parseObj } from '../src/engine/obj';
 import { parseStlBinary } from '../src/engine/stl';
-import type { Axis, MeshArrays } from '../src/engine/types';
+import type { Axis, MeshArrays, CastingIntent } from '../src/engine/types';
 
 const args = process.argv.slice(2);
 const arg = (name: string): string | undefined => {
@@ -51,6 +50,31 @@ const CAST = (arg('cast') as 'front_only' | 'all_sides' | 'inner_and_outer' | un
 const ROLE = (arg('role') as 'positive_master' | 'prebuilt_negative_mold' | 'tooling' | undefined) ?? undefined;
 const SPLIT = arg('split') as Axis | undefined;
 const NO_ZIP = has('no-zip');
+const FAMILY = arg('method') as CastingIntent['requestedFamily'];
+const MULTI_BODY = arg('multi-body') as CastingIntent['multiBodyHandling'];
+const BACKING_NORMAL = arg('backing-normal');
+let backingNormalSource: [number,number,number] | undefined;
+if (BACKING_NORMAL !== undefined) {
+  const values=BACKING_NORMAL.split(',').map(Number);
+  if(values.length!==3||values.some(x=>!Number.isFinite(x))||Math.hypot(...values)<1e-9){
+    console.error('generate_mold: --backing-normal requires three nonzero finite components, for example 0,0,-1');
+    process.exit(2);
+  }
+  backingNormalSource=[values[0],values[1],values[2]];
+}
+for (const [name, allowed] of [
+  ['cast', ['front_only', 'all_sides', 'inner_and_outer', 'unspecified']],
+  ['role', ['positive_master', 'prebuilt_negative_mold', 'tooling', 'unknown']],
+  ['method', ['auto', 'open_face_relief', 'full_3d_jacket', 'vessel_core']],
+  ['multi-body', ['auto_review', 'fuse_overlapping', 'separate_casts']],
+  ['vertical', ['X','Y','Z']], ['split', ['X','Y','Z']],
+] as const) {
+  const value = arg(name);
+  if (has(name) && (!value || !(allowed as readonly string[]).includes(value))) {
+    console.error(`generate_mold: invalid --${name}; expected ${allowed.join(', ')}`);
+    process.exit(2);
+  }
+}
 
 const t0 = Date.now();
 const el = () => `[${((Date.now() - t0) / 1000).toFixed(1)}s]`;
@@ -64,6 +88,10 @@ const ext = input.toLowerCase().slice(input.lastIndexOf('.') + 1);
 // diagnosis — never a silent guess that the bytes are an STL
 if (ext === 'step' || ext === 'stp' || ext === '3mf') {
   console.error(`generate_mold: unsupported format .${ext} — this platform imports STL/OBJ/GLB only. Convert with a CAD tessellator that preserves units and tolerance, then rerun.`);
+  process.exit(2);
+}
+if (!['stl', 'obj', 'glb'].includes(ext) && !isGlb) {
+  console.error(`generate_mold: unsupported format .${ext}; expected STL, OBJ or GLB`);
   process.exit(2);
 }
 let full: MeshArrays;
@@ -125,17 +153,12 @@ try {
 const report = buildReport(input, { ...full, vertCount: full.vertProperties.length / 3 }, analysis, analysis.triVerts.length / 3, 64);
 console.log(`${el()} intake: ${full.triVerts.length / 3} tris, bbox ${bb0.dim.map((d) => d.toFixed(1)).join(' × ')} mm`);
 
-// --- SDF grid + axis ranking (worker parity) ---
-const grid = await buildSignedDistanceGrid(full, { gap: GAP, wall: WALL, step: 0.75 });
-const rankedAxes = rankSplitAxes(report.axes, analysis, grid, GAP);
-console.log(`${el()} ranked axes: ${rankedAxes.join(' → ')}`);
-
 // --- plan: the ONE shared pipeline (CLI, browser worker and tests) ---
 const inputSha256 = createHash('sha256').update(bytes).digest('hex');
 let engineCommit = 'unknown';
 try { engineCommit = execSync('git rev-parse HEAD').toString().trim(); } catch { /* not a git checkout */ }
 const plan = await planMold({
-  mod, master: full, grid, rankedAxes,
+  mod, master: full,
   params: { gap: GAP, wall: WALL, clearance: CLEARANCE, verticalAxis: VERTICAL, splitAxis: SPLIT, gapWindow: GAP_WINDOW, ribs: RIBS, material: MATERIAL, panels: PANELS },
   name: input.split(/[\\/]/).pop()!.replace(/\.[^.]+$/, ''),
   source: {
@@ -146,14 +169,14 @@ const plan = await planMold({
     engineCommit,
   },
   ports: false,
-  castingIntent: { inputRole: ROLE ?? 'positive_master', requiredSurfaces: CAST ?? 'all_sides' },
+  castingIntent: { inputRole: ROLE ?? 'unknown', requiredSurfaces: CAST ?? 'unspecified', requestedFamily: FAMILY ?? 'auto', backingNormalSource, multiBodyHandling: MULTI_BODY ?? 'auto_review' },
   extraWarnings: [...warnings, ...report.warnings],
   onProgress: (stage) => console.log(`${el()} ${stage}`),
 });
 if (!plan.ok) {
-  console.error(`generate_mold: ${plan.message}`);
+  console.error(`generate_mold: ${plan.outcome}: ${plan.message}`);
   for (const r of plan.rejectionLedger) console.error(`  ✗ ${r.candidate} [${r.stage}] ${r.reason.slice(0, 160)}`);
-  process.exit(1);
+  process.exit(plan.outcome === 'review_required' || plan.outcome === 'unsupported' ? 2 : 1);
 }
 if (!plan.files) {
   console.error('generate_mold: internal error — plan succeeded without export files');
@@ -161,7 +184,7 @@ if (!plan.files) {
 }
 const { pkg } = plan;
 const { files, zip, fileName } = plan.files;
-console.log(`${el()} method ${plan.method.family} (${plan.method.panels}-piece, split ±${pkg.axis}); rejected: ${plan.rejectionLedger.length === 0 ? 'none' : plan.rejectionLedger.map((r) => `${r.candidate} (${r.reason.slice(0, 60)})`).join('; ')}`);
+console.log(`${el()} method ${plan.method.family} (${plan.method.panels === 1 ? 'open tray' : `${plan.method.panels}-piece, split ±${pkg.axis}`}); rejected: ${plan.rejectionLedger.length === 0 ? 'none' : plan.rejectionLedger.map((r) => `${r.candidate} (${r.reason.slice(0, 60)})`).join('; ')}`);
 for (const c of plan.checks) console.log(`${c.pass ? 'PASS' : 'FAIL'}  ${c.name}  (${c.detail})`);
 console.log(`${el()} printability forecast…`);
 for (const [name, r] of Object.entries(plan.printability)) {
@@ -181,4 +204,6 @@ if (!NO_ZIP) {
 }
 console.log(`${el()} package written to ${OUT_DIR}/ ${NO_ZIP ? '' : `(+ ${fileName})`}`);
 console.log(`frame: vert ${pkg.frame.vert}, pull ±${pkg.frame.pull}, base ${pkg.frame.base.toFixed(1)}, mid ${pkg.frame.mid.toFixed(1)}, crown ${pkg.frame.crown.toFixed(1)}`);
-console.log(`jacket ${pkg.jacketDim.map((d) => d.toFixed(1)).join(' × ')} mm · silicone ${pkg.siliconeMl.toFixed(0)} mL · extraction A ${pkg.extraction.A.freeAtMm} / B ${pkg.extraction.B?.freeAtMm ?? `${pkg.extraction.B1?.freeAtMm}/${pkg.extraction.B2?.freeAtMm} (B1/B2)`} mm`);
+console.log(plan.method.panels === 1
+  ? `open tray ${pkg.jacketDim.map((d) => d.toFixed(1)).join(' × ')} mm · silicone ${pkg.siliconeMl.toFixed(0)} mL · wall lift +Z ${plan.release.rigid[0].freeAtMm.toFixed(2)} mm`
+  : `jacket ${pkg.jacketDim.map((d) => d.toFixed(1)).join(' × ')} mm · silicone ${pkg.siliconeMl.toFixed(0)} mL · extraction A ${pkg.extraction.A.freeAtMm} / B ${pkg.extraction.B?.freeAtMm ?? `${pkg.extraction.B1?.freeAtMm}/${pkg.extraction.B2?.freeAtMm} (B1/B2)`} mm`);

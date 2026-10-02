@@ -35,12 +35,35 @@ export interface PackageInfo {
   crown: { u: number; v: number } | null;
   ventCount: number;
   trayGeometry?: { fillHeightMm: number; wallHeightMm: number; freeboardMm: number };
+  topologyRepair?: TopologyRepairRecord; // bounded silicone-skin repair evidence (V3 pinched-edge fix)
   clearanceBand?: { requestedGap: number; min: number; p10: number; p50: number; p90: number; withinBand: boolean };
   printability?: Record<string, {
     bedAreaMm2: number; overhangAreaMm2: number; layerStep: number; layers: number;
     worstBands: { zLo: number; zHi: number; areaMm2: number }[];
   }>;
   frame?: { vert: Axis; base: number; plateT: number }; // mold vertical + base plane — drives the slicer orientation guidance
+}
+
+/** Evidence record for the bounded silicone-skin topology repair (V3 fidelity
+ *  rule: displacement ≤ min(0.05 mm, finestProtectedFeatureMm/10)). The repair
+ *  is only adopted when the exact kernel path leaves the SERIALIZED bytes
+ *  pinched and a bounded candidate makes them valid; the rigid blockers are
+ *  re-cut afterwards so the cavity surface is exact and no silicone remains
+ *  inside a rigid part. */
+export interface TopologyRepairRecord {
+  part: string;
+  applied: boolean;              // false = the exact pass alone serialized valid
+  toleranceMm: number;           // adopted kernel simplification tolerance
+  budgetMm: number;              // min(0.05, finestProtectedFeatureMm / 10)
+  finestProtectedFeatureMm: number;
+  featureBasis: string;          // how the feature size was established
+  recutBlockers: boolean;        // rigid blockers re-cut after the simplification
+  volumeBeforeMm3: number;       // exact CSG skin (post contact reconciliation)
+  volumeAfterMm3: number;
+  volumeDeltaMm3: number;
+  blockerOverlapAfterMm3: number;
+  overlapQuantizationBoundMm3: number;
+  ladder: { toleranceMm: number; recut: boolean; verdict: string; pinchedEdges: number; blockerOverlapMm3: number }[];
 }
 
 export interface PrintFiles {
@@ -201,6 +224,7 @@ export function buildPrintFiles(deps: {
     basePlateMm: info.plateDim.map((d) => Number(d.toFixed(1))),
     ports: { crown: null as null, ventCount: info.ventCount },
     clearanceBand: info.clearanceBand ?? null,
+    topologyRepair: info.topologyRepair ?? null,
     printability: info.printability ?? null,
     frame: info.frame ?? null,
     castingMaterial: info.params.material ?? null,

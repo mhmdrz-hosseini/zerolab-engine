@@ -104,6 +104,7 @@
     {
       "id": "cap-50",
       "sourceFile": "obj_2_latern_cap.stl",
+      "backingNormalSource": [0, 0, -1],
       "sizeMm": 50,
       "inputRole": "positive_master",
       "requiredSurfaces": "front_only",
@@ -116,6 +117,7 @@
     {
       "id": "cap-200",
       "sourceFile": "obj_2_latern_cap.stl",
+      "backingNormalSource": [0, 0, -1],
       "sizeMm": 200,
       "inputRole": "positive_master",
       "requiredSurfaces": "front_only",

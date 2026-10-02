@@ -85,7 +85,7 @@ export interface GenerateResult {
   axis: Axis;
   elapsedMs: number;
   extraction: { A: number; B: number; B1?: number; B2?: number };  // free-travel mm at first clearance
-  panels?: 2 | 3;                        // jacket piece count (3 = multi-panel)
+  panels?: 1 | 2 | 3;                    // one open tray wall or a split jacket
   warnings: string[];
   checks: { name: string; pass: boolean; hard: boolean; detail: string }[];
   gatesPass: boolean;                    // all hard gates green — export allowed
@@ -117,17 +117,30 @@ export interface GenerateResult {
 
 export type WorkerRequest =
   | { type: 'ingest'; fileName: string; bytes: ArrayBuffer }
-  | { type: 'generate'; params: GenerateParams }
+  | { type: 'generate'; params: GenerateParams; castingIntent: CastingIntent }
   | { type: 'export' }
   | { type: 'cancel' };
 
 export type WorkerResponse =
   | { type: 'progress'; stage: string; pct: number }
   | { type: 'analysis'; report: AnalysisReport; preview: MeshArrays }
+  | { type: 'suggested-intent'; suggestion: SuggestedIntent }
   | { type: 'result'; result: GenerateResult }
-  | { type: 'failure'; axis: Axis; trappedPct: number; message: string; nextAxis?: Axis; trapFlags?: Uint8Array }
+  | { type: 'failure'; axis: Axis; trappedPct: number; message: string; outcome?: 'review_required' | 'unsupported' | 'rejected'; nextAxis?: Axis; trapFlags?: Uint8Array }
   | { type: 'export'; blob: ArrayBuffer; fileName: string }
   | { type: 'error'; message: string };
+
+/** Best-fit default intent the worker proposes after ingest; the UI
+ *  pre-fills its selectors with this and the user can override anything. */
+export interface SuggestedIntent {
+  surfaces: 'front_only' | 'all_sides' | 'inner_and_outer';
+  family: 'auto' | 'open_face_relief' | 'full_3d_jacket' | 'vessel_core';
+  backingNormalSource: [number, number, number];
+  multiBodyHandling: 'auto_review' | 'fuse_overlapping' | 'separate_casts';
+  positiveShells: number;
+  connectedGroups: number;
+  reason: string;
+}
 
 export function trisOf(m: MeshArrays): number {
   return m.triVerts.length / 3;
@@ -139,4 +152,7 @@ export type RequiredSurfaces = 'front_only' | 'all_sides' | 'inner_and_outer' | 
 export interface CastingIntent {
   inputRole: InputRole;
   requiredSurfaces: RequiredSurfaces;
+  requestedFamily?: 'auto' | 'open_face_relief' | 'full_3d_jacket' | 'vessel_core';
+  backingNormalSource?: [number, number, number];
+  multiBodyHandling?: 'auto_review' | 'fuse_overlapping' | 'separate_casts';
 }

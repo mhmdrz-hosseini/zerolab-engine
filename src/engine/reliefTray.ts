@@ -6,17 +6,19 @@
 // territory (siliconeDemold: unverified) exactly as in the jacket family.
 //
 // Construction (tray frame = the master arrives backing-plane-DOWN at z=0):
-//   shadow    = union of master slices over its full height (undercut-safe)
+//   shadow    = exact projected outer contours, internal holes excluded
 //   inner     = shadow ⊕ gap          (the clearance gap, applied ONCE)
 //   outer     = inner ⊕ wall          (contour wall thickness)
 //   base      = extrude(outer, plateT), spans [−plateT, 0] — master fuses to it
-//   wall      = extrude(outer) − extrude(inner), spans [−plateT, wallTop], no roof
+//   wall      = extrude(outer) − extrude(inner), spans [0, wallTop], seats on base
 //   silicone  = extrude(inner, fillTop) − master; freeboard stays empty
 // Through-holes in the master fill with silicone and report as withdrawable
 // posts when straight — never silently filled or cored without a note.
-import { isStatusOk, type ManifoldMod } from './manifoldLoader';
+import { isStatusOk, type ManifoldMod, type ManifoldInstance } from './manifoldLoader';
 import type { CS } from './split';
 import type { MeshArrays } from './types';
+import { normalizePositiveShells } from './solid';
+import { meshVolumeCm3 } from './clean';
 
 export interface ReliefTrayParams {
   gap: number;      // silicone clearance around the master (mm)
@@ -60,8 +62,8 @@ export function buildReliefTray(deps: {
 }): ReliefTrayResult {
   const { mod, master, params } = deps;
   const { gap, wall, plateT, backing, freeboard } = params;
-  const man = new mod.Manifold(new mod.Mesh({ numProp: 3, vertProperties: master.vertProperties, triVerts: master.triVerts }));
-  if (!isStatusOk(man)) throw new Error('relief tray: master is not a valid solid');
+  const normalized = normalizePositiveShells(mod, master);
+  const man = normalized.solid;
   try {
     const bb = man.boundingBox();
     const masterTop = bb.max[2];
@@ -76,17 +78,23 @@ export function buildReliefTray(deps: {
     }
     if (masterTop <= 0.2) throw new Error('relief tray: master has no relief height above the backing plane');
 
-    // --- shadow: union of slices across the full height (undercut-safe) ---
+    // The container follows the outside silhouette. Interior loops belong to
+    // the master, not the container: extruding them creates unwanted rigid
+    // islands and removes the silicone posts which must fill through-holes.
     deps.onProgress?.('Projecting the master silhouette');
-    const steps = Math.max(2, Math.ceil(masterTop / 2));
-    let shadow: CS | null = null;
-    for (let i = 0; i <= steps; i++) {
-      const z = 0.05 + (masterTop - 0.1) * (i / steps);
-      const s = man.slice(z);
-      if (!s) continue;
-      shadow = shadow ? shadow.add(s) : s;
-    }
-    if (!shadow) throw new Error('relief tray: master projection is empty');
+    const projected = man.project();
+    const exterior = (projected.toPolygons?.() ?? []).filter(poly => {
+      let twiceArea = 0;
+      for (let i = 0; i < poly.length; i++) {
+        const a = poly[i], b = poly[(i + 1) % poly.length];
+        twiceArea += a[0] * b[1] - b[0] * a[1];
+      }
+      return twiceArea > 0;
+    });
+    const sections = mod.CrossSection as { ofPolygons(polys: number[][][], fillRule?: string): CS };
+    if (!exterior.length) { projected.delete(); throw new Error('relief tray: master projection is empty'); }
+    const shadow = sections.ofPolygons(exterior, 'Positive');
+    projected.delete();
     const shBb = shadow.bounds();
     const shSpan = Math.max(1e-6, Math.min(shBb.max[0] - shBb.min[0], shBb.max[1] - shBb.min[1]));
 
@@ -100,15 +108,15 @@ export function buildReliefTray(deps: {
     // --- solid parts ---
     deps.onProgress?.('Building plate and wall');
     const plate = outer.extrude(plateT).translate(0, 0, -plateT);       // spans [−plateT, 0]
-    const wallOuterPrism = outer.extrude(wallTop + plateT).translate(0, 0, -plateT);
-    const wallInnerPrism = inner.extrude(wallTop + plateT).translate(0, 0, -plateT);
+    const wallOuterPrism = outer.extrude(wallTop);
+    const wallInnerPrism = inner.extrude(wallTop);
     const wallSolid = wallOuterPrism.subtract(wallInnerPrism);           // ring, NO roof
 
     // --- master fused to the plate (buried foot, same trick as the jacket) ---
     deps.onProgress?.('Fusing the master to the plate');
-    const footCS = man.slice(0.3);
+    const footCS = man.slice(0.01);
     const foot = footCS
-      ? footCS.extrude(0.32).translate(0, 0, -0.01)
+      ? footCS.extrude(0.021).translate(0, 0, -0.01)
       : null;
     const plateMan = foot ? plate.add(foot) : plate;
     const masterBase = man.add(plateMan);
@@ -149,7 +157,7 @@ export function buildReliefTray(deps: {
       return { withdrawable: !!match, areaMm2: Number(h.area.toFixed(1)) };
     });
 
-    const warnings: string[] = [];
+    const warnings: string[] = [...normalized.notes, 'Tray CSG regularization bounded to 0.005 mm surface displacement; protected detail remains subject to the final fidelity gate.'];
     if (throughHoles.some((h) => !h.withdrawable)) {
       warnings.push('a non-straight interior void does not withdraw along +Z — it needs a documented removable core or a cut/peel procedure before production');
     }
@@ -157,22 +165,44 @@ export function buildReliefTray(deps: {
       warnings.push('through-hole(s) fill with silicone and cast as posts; they withdraw along +Z only when straight — verify the cured post releases without tearing');
     }
 
-    const toArrays = (m: { getMesh(): { vertProperties: Float32Array; triVerts: Uint32Array; numTri: number }; delete(): void }): MeshArrays => {
-      const dm = m.getMesh();
+    const toArrays = (m: ManifoldInstance, toleranceMm: number): MeshArrays => {
+      // Kernel simplification is displacement-bounded to 5 µm. At large
+      // export scales this removes sub-print-resolution boolean pinches which
+      // survive the 1 µm STL weld; source feature fidelity remains a final gate.
+      const simplified = m.simplify(toleranceMm);
+      const dm = simplified.getMesh();
       const out: MeshArrays = { vertProperties: Float32Array.from(dm.vertProperties), triVerts: Uint32Array.from(dm.triVerts.subarray(0, dm.numTri * 3)) };
+      simplified.delete();
       m.delete();
       return out;
     };
-    const basePlate = toArrays(plateMan);
-    const wallArr = toArrays(wallSolid);
-    const masterBaseArr = toArrays(masterBase);
-    const siliconeArr = toArrays(silicone);
+    const basePlate = toArrays(plateMan, 0.005);
+    const wallArr = toArrays(wallSolid, 0.005);
+    const masterBaseArr = toArrays(masterBase, 0.005);
+    const siliconeArr = toArrays(silicone, 0.005);
+    // Independently simplified contact surfaces can cross by a few microns.
+    // Reconcile their actual exported solids with exact CSG so the wall does
+    // not collide with either the printed base or the cured silicone.
+    const clipAgainst = (mesh: MeshArrays, obstacle: MeshArrays): MeshArrays => {
+      const left = new mod.Manifold(new mod.Mesh({ numProp: 3, ...mesh }));
+      const right = new mod.Manifold(new mod.Mesh({ numProp: 3, ...obstacle }));
+      try {
+        const clipped = left.subtract(right);
+        if (!isStatusOk(clipped)) throw new Error('relief tray: contact reconciliation failed');
+        const dm = clipped.getMesh();
+        const out: MeshArrays = { vertProperties: Float32Array.from(dm.vertProperties), triVerts: Uint32Array.from(dm.triVerts.subarray(0, dm.numTri * 3)) };
+        clipped.delete();
+        return out;
+      } finally { left.delete(); right.delete(); }
+    };
+    const fittedMasterBase = clipAgainst(masterBaseArr, wallArr);
+    const fittedSilicone = clipAgainst(clipAgainst(siliconeArr, wallArr), fittedMasterBase);
     // free remaining intermediates
     [shadow, inner, outer, wallOuterPrism, wallInnerPrism, cavityPrism, foot].forEach((x) => { try { x?.delete(); } catch { /* freed */ } });
 
     return {
-      pieces: { basePlate, wall: wallArr, masterBase: masterBaseArr, siliconeSkin: siliconeArr },
-      siliconeMl: Number(siliconeMl.toFixed(1)),
+      pieces: { basePlate, wall: wallArr, masterBase: fittedMasterBase, siliconeSkin: fittedSilicone },
+      siliconeMl: Number(meshVolumeCm3(fittedSilicone).toFixed(1)),
       masterTopZ: Number(masterTop.toFixed(2)),
       fillTopZ: Number(fillTop.toFixed(2)),
       wallTopZ: Number(wallTop.toFixed(2)),

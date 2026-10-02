@@ -349,10 +349,15 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
   const warnings: string[] = [];
   const junk: { delete(): void }[] = [];
   const track = <T extends { delete(): void }>(x: T): T => { junk.push(x); return x; };
-  const printable = (solid: ManifoldInstance, name: string): ManifoldInstance => {
+  const printable = (solid: ManifoldInstance, name: string, keepAllComponents = false): ManifoldInstance => {
     const components = solid.decompose().map(track);
     const substantial = components.filter(c => c.volume() > 0.0001);
-    if (substantial.length !== 1) throw new Error(`${name} has ${substantial.length} disconnected solids; choose a connected master or another orientation`);
+    if (substantial.length !== 1) {
+      // multi-component result the CALLER already validated as one connected
+      // print through a bridging solid (e.g. master bridging base-plate pads)
+      if (keepAllComponents && substantial.length > 1) return solid;
+      throw new Error(`${name} has ${substantial.length} disconnected solids; choose a connected master or another orientation`);
+    }
     return substantial[0]; // omit zero-volume Boolean residue, never real geometry
   };
 
@@ -655,14 +660,33 @@ export async function buildMoldForAxis(deps: BuildMoldDeps): Promise<AxisAttempt
     }
     progress('Building the contoured base plate', 0.8);
     const plateBlank = track(prismOnVert(plateOutlineCS, v, frame.base - K.plateT, frame.base));
-    let localMaster = masterMan;
-    if (v === 0) localMaster = track(track(masterMan.rotate(0, -90, 0)).rotate(0, 0, -90));
-    if (v === 1) localMaster = track(track(masterMan.rotate(90, 0, 0)).rotate(0, 0, 90));
-    // A small buried foot creates a volumetric master/base connection, without
-    // lifting the whole plate through the jacket's seating surface.
-    const footCS = track(localMaster.slice(frame.base + 0.3));
-    const foot = track(prismOnVert(footCS, v, frame.base - 0.01, frame.base + 0.31));
-    const plate = printable(track(plateBlank.add(foot)), 'Base plate');
+    // Fuse the plate through the master's actual lower material band. The old
+    // constant cross-section foot occupied silicone wherever a tapered body
+    // narrowed above the base. This band is already part of the master, so it
+    // creates the same robust union without changing the cast cavity.
+    const verticalVec = UNIT[frame.vert];
+    const actualFoot = track(track(masterMan.trimByPlane([...verticalVec], frame.base))
+      .trimByPlane(verticalVec.map(x => -x), -(frame.base + 0.31)));
+    const plateJoined = track(plateBlank.add(actualFoot));
+    // Connectivity of the PLATE ALONE is too strict for masters that rest on
+    // several pads (measured: candle lamp / angel at a standing pose — 3 feet).
+    // The printed part is master+plate: when the master bridges the plate
+    // islands anywhere above the base band, the package stays one connected
+    // print and the multi-pad plate is legitimate. Only a master that truly
+    // hovers off its own plate rejects the pose.
+    {
+      const comps = plateJoined.decompose().map(track);
+      const substantial = comps.filter(c => c.volume() > 0.0001);
+      if (substantial.length > 1) {
+        const bridged = track(plateBlank.add(masterMan)).decompose().map(track)
+          .filter(c => c.volume() > 0.0001);
+        if (bridged.length !== 1) {
+          throw new Error(`Base plate has ${substantial.length} disconnected solids and the master does not bridge them; choose a connected master or another orientation`);
+        }
+        warnings.push(`Base plate spans ${substantial.length} pads bridged by the master above the base band — the printed master+plate part stays one connected solid.`);
+      }
+    }
+    const plate = printable(plateJoined, 'Base plate', true);
     if (!isOk(plate)) throw new Error('kernel rejected the base plate');
     const plateArr = instanceToMeshArrays(plate);
 
